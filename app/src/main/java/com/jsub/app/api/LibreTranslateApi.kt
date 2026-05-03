@@ -7,8 +7,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -60,10 +62,10 @@ class LibreTranslateApi : TranslationApi {
 
         repeat(MAX_RETRIES) { attempt ->
             try {
-                val requestBody = okhttp3.RequestBody.create(
-                    okhttp3.MediaType.parse("application/json; charset=utf-8"),
-                    json.encodeToString(LibreRequest.serializer(), LibreRequest(text = japaneseText))
-                )
+                val requestBody = json.encodeToString(
+                    LibreRequest.serializer(),
+                    LibreRequest(text = japaneseText)
+                ).toRequestBody("application/json; charset=utf-8".toMediaType())
 
                 val request = Request.Builder()
                     .url(API_URL)
@@ -72,9 +74,9 @@ class LibreTranslateApi : TranslationApi {
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    val body = response.body()?.string()
+                    val body = response.body.string()
 
-                    if (response.code() == 429) {
+                    if (response.code == 429) {
                         Log.w(TAG, "Rate limited (429), retrying in ${retryDelay}ms (attempt ${attempt + 1})")
                         delay(retryDelay)
                         retryDelay *= 2
@@ -82,16 +84,16 @@ class LibreTranslateApi : TranslationApi {
                     }
 
                     if (!response.isSuccessful) {
-                        throw IOException("HTTP ${response.code()}: $body")
+                        throw IOException("HTTP ${response.code}: $body")
                     }
 
-                    body?.let {
+                    body.let {
                         val result = json.decodeFromString(LibreResponse.serializer(), it)
                         result.error?.let { error ->
                             throw IOException("API Error: $error")
                         }
                         return@withContext result.translatedText ?: japaneseText
-                    } ?: throw IOException("Empty response body")
+                    }
                 }
             } catch (e: IOException) {
                 lastException = e

@@ -152,7 +152,7 @@ class AnimeWhisperEngine(
                 // 验证网络连通性：发送一个空请求测试API可达性
                 val testRequest = buildInferenceRequest(ByteArray(0))
                 client.newCall(testRequest).execute().use { response ->
-                    when (response.code()) {
+                    when (response.code) {
                         200, 400, 422 -> {
                             // API可达（400/422是因为空音频，说明服务在线）
                             Log.i(TAG, "Anime-Whisper engine initialized successfully")
@@ -172,7 +172,7 @@ class AnimeWhisperEngine(
                             true
                         }
                         else -> {
-                            Log.w(TAG, "Unexpected response code: ${response.code()}")
+                            Log.w(TAG, "Unexpected response code: ${response.code}")
                             isInitialized = true
                             true
                         }
@@ -219,10 +219,10 @@ class AnimeWhisperEngine(
                     val wavData = addWavHeader(audioData, SAMPLE_RATE)
                     val base64Audio = Base64.encodeToString(wavData, Base64.NO_WRAP)
 
-                    val requestBody = RequestBody.create(
-                        MediaType.parse("application/json; charset=utf-8"),
-                        json.encodeToString(InferenceRequest.serializer(), InferenceRequest(base64Audio))
-                    )
+                    val requestBody = json.encodeToString(
+                        InferenceRequest.serializer(),
+                        InferenceRequest(base64Audio)
+                    ).toRequestBody("application/json; charset=utf-8".toMediaType())
 
                     val requestBuilder = Request.Builder()
                         .url(API_URL)
@@ -236,9 +236,9 @@ class AnimeWhisperEngine(
                     val request = requestBuilder.build()
 
                     client.newCall(request).execute().use { response ->
-                        val body = response.body()?.string() ?: ""
+                        val body = response.body.string()
 
-                        when (response.code()) {
+                        when (response.code) {
                             200 -> {
                                 // 解析成功响应
                                 val result = parseResponse(body)
@@ -273,8 +273,8 @@ class AnimeWhisperEngine(
                                 delay(RETRY_DELAY_MS * 2)
                             }
                             else -> {
-                                lastException = IOException("HTTP ${response.code()}: $body")
-                                Log.w(TAG, "Request failed: ${response.code()}, retry ${attempt + 1}/$MAX_RETRIES")
+                                lastException = IOException("HTTP ${response.code}: $body")
+                                Log.w(TAG, "Request failed: ${response.code}, retry ${attempt + 1}/$MAX_RETRIES")
                                 if (attempt < MAX_RETRIES - 1) delay(RETRY_DELAY_MS)
                             }
                         }
@@ -391,10 +391,10 @@ class AnimeWhisperEngine(
         val wavData = addWavHeader(audioData, SAMPLE_RATE)
         val base64Audio = Base64.encodeToString(wavData, Base64.NO_WRAP)
 
-        val requestBody = RequestBody.create(
-            MediaType.parse("application/json; charset=utf-8"),
-            json.encodeToString(InferenceRequest.serializer(), InferenceRequest(base64Audio))
-        )
+        val requestBody = json.encodeToString(
+            InferenceRequest.serializer(),
+            InferenceRequest(base64Audio)
+        ).toRequestBody("application/json; charset=utf-8".toMediaType())
 
         val requestBuilder = Request.Builder()
             .url(API_URL)
@@ -562,4 +562,6 @@ class AnimeWhisperEngine(
 
         return header + pcmData
     }
+}
+   }
 }

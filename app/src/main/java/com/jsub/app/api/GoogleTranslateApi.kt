@@ -8,8 +8,10 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -89,10 +91,10 @@ class GoogleTranslateApi(
                     ?: throw IllegalStateException("Invalid base URL")
                 urlBuilder.addQueryParameter("key", apiKey)
 
-                val requestBody = okhttp3.RequestBody.create(
-                    okhttp3.MediaType.parse("application/json; charset=utf-8"),
-                    json.encodeToString(TranslateRequest.serializer(), TranslateRequest(text = japaneseText))
-                )
+                val requestBody = json.encodeToString(
+                    TranslateRequest.serializer(),
+                    TranslateRequest(text = japaneseText)
+                ).toRequestBody("application/json; charset=utf-8".toMediaType())
 
                 val request = Request.Builder()
                     .url(urlBuilder.build())
@@ -101,16 +103,16 @@ class GoogleTranslateApi(
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    val body = response.body()?.string()
+                    val body = response.body.string()
 
                     if (!response.isSuccessful) {
-                        if (response.code() == 429) {
+                        if (response.code == 429) {
                             Log.w(TAG, "Rate limited, retrying in ${retryDelay}ms")
                             delay(retryDelay)
                             retryDelay *= 2
                             return@repeat
                         }
-                        throw IOException("HTTP ${response.code()}: $body")
+                        throw IOException("HTTP ${response.code}: $body")
                     }
 
                     body?.let {

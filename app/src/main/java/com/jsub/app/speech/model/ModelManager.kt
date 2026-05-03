@@ -61,11 +61,11 @@ class ModelManager(private val context: Context) {
             val request = Request.Builder().url(MODEL_URL).build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    Log.e(TAG, "Download failed: HTTP ${response.code()}")
+                    Log.e(TAG, "Download failed: HTTP ${response.code}")
                     return@withContext false
                 }
 
-                val body = response.body() ?: return@withContext false
+                val body = response.body ?: return@withContext false
                 val totalBytes = body.contentLength()
                 val tempFile = File(modelDir, "${MODEL_FILENAME}.tmp")
 

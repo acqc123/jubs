@@ -7,9 +7,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -130,10 +131,10 @@ class DeepSeekTranslationApi(
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    val body = response.body()?.string()
+                    val body = response.body.string()
 
                     // 处理限流
-                    if (response.code() == 429) {
+                    if (response.code == 429) {
                         Log.w(TAG, "Rate limited, retrying in ${retryDelay}ms")
                         delay(retryDelay)
                         retryDelay *= 2
@@ -141,7 +142,7 @@ class DeepSeekTranslationApi(
                     }
 
                     if (!response.isSuccessful) {
-                        throw IOException("HTTP ${response.code()}: $body")
+                        throw IOException("HTTP ${response.code}: $body")
                     }
 
                     body?.let { responseBody ->
@@ -203,9 +204,6 @@ class DeepSeekTranslationApi(
 
         val jsonBody = json.encodeToString(ChatRequest.serializer(), request)
 
-        return RequestBody.create(
-            okhttp3.MediaType.parse("application/json; charset=utf-8"),
-            jsonBody
-        )
+        return jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
     }
 }

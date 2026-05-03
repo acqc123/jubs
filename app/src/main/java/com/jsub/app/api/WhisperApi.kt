@@ -6,11 +6,11 @@ import kotlinx.coroutines.flow.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -80,10 +80,10 @@ class WhisperApi(
                         .build()
 
                     client.newCall(request).execute().use { response ->
-                        val body = response.body()?.string()
+                        val body = response.body.string()
 
                         if (!response.isSuccessful) {
-                            throw IOException("HTTP ${response.code()}: $body")
+                            throw IOException("HTTP ${response.code}: $body")
                         }
 
                         body?.let {
@@ -148,8 +148,7 @@ class WhisperApi(
      * 构建Whisper API请求体
      */
     private fun buildRequestBody(audioData: ByteArray): RequestBody {
-        val mediaType = MediaType.parse("audio/wav")
-        val audioBody = RequestBody.create(mediaType, audioData)
+        val audioBody = audioData.toRequestBody("audio/wav".toMediaType())
 
         return MultipartBody.Builder()
             .setType(MultipartBody.FORM)

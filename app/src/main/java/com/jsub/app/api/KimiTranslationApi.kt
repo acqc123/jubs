@@ -130,10 +130,10 @@ class KimiTranslationApi(
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    val body = response.body()?.string()
+                    val body = response.body.string()
 
                     // 处理限流
-                    if (response.code() == 429) {
+                    if (response.code == 429) {
                         Log.w(TAG, "Rate limited, retrying in ${retryDelay}ms")
                         delay(retryDelay)
                         retryDelay *= 2
@@ -141,10 +141,10 @@ class KimiTranslationApi(
                     }
 
                     if (!response.isSuccessful) {
-                        throw IOException("HTTP ${response.code()}: $body")
+                        throw IOException("HTTP ${response.code}: $body")
                     }
 
-                    body?.let { responseBody ->
+                    body.let { responseBody ->
                         val result = json.decodeFromString(ChatResponse.serializer(), responseBody)
 
                         result.error?.let { error ->
@@ -210,9 +210,6 @@ class KimiTranslationApi(
 
         val jsonBody = json.encodeToString(ChatRequest.serializer(), request)
 
-        return RequestBody.create(
-            okhttp3.MediaType.parse("application/json; charset=utf-8"),
-            jsonBody
-        )
+        return jsonBody.toRequestBody("application/json; charset=utf-8".toMediaType())
     }
 }

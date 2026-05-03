@@ -13,7 +13,12 @@ interface SpeechRecognitionEngine {
     /**
      * 引擎名称（用于日志和显示）
      */
-    val engineName: String
+    val name: String
+
+    /**
+     * 是否需要网络连接
+     */
+    val requiresNetwork: Boolean
 
     /**
      * 是否需要下载模型文件（本地引擎返回true）
@@ -49,4 +54,11 @@ interface SpeechRecognitionEngine {
      * @return 识别文本流
      */
     fun streamingRecognize(audioFlow: Flow<ByteArray>): Flow<String>
+
+    /**
+     * 释放引擎资源
+     *
+     * 清理模型、内存和网络资源。
+     */
+    fun release()
 }

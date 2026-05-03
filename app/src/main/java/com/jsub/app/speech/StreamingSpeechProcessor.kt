@@ -14,6 +14,7 @@ import com.jsub.app.model.TranslationProvider
 import com.jsub.app.speech.engine.EngineFactory
 import com.jsub.app.speech.engine.SpeechRecognitionEngine
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
 
 /**
@@ -111,7 +112,7 @@ class StreamingSpeechProcessor(
             }
         }
 
-        Log.i(TAG, "Speech processing started with engine: ${speechEngine.engineName}")
+        Log.i(TAG, "Speech processing started with engine: ${speechEngine.name}")
     }
 
     override fun stopProcessing() {
