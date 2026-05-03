@@ -1,7 +1,9 @@
 package com.jsub.app.speech
 
 import android.util.Log
+import com.jsub.app.api.DeepSeekTranslationApi
 import com.jsub.app.api.GoogleTranslateApi
+import com.jsub.app.api.KimiTranslationApi
 import com.jsub.app.api.LibreTranslateApi
 import com.jsub.app.api.RecognitionResult
 import com.jsub.app.api.SpeechRecognitionApi
@@ -46,6 +48,8 @@ class StreamingSpeechProcessor(
             val translationApi: TranslationApi = when (translationProvider) {
                 TranslationProvider.GOOGLE_TRANSLATE -> GoogleTranslateApi(translationApiKey)
                 TranslationProvider.LIBRE_TRANSLATE -> LibreTranslateApi()
+                TranslationProvider.DEEPSEEK -> DeepSeekTranslationApi(translationApiKey)
+                TranslationProvider.KIMI -> KimiTranslationApi(translationApiKey)
             }
             return StreamingSpeechProcessor(speechApi, translationApi)
         }

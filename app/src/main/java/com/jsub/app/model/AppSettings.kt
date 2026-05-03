@@ -37,7 +37,11 @@ enum class TranslationProvider {
     /** Google Cloud Translation */
     GOOGLE_TRANSLATE,
     /** LibreTranslate（免费） */
-    LIBRE_TRANSLATE
+    LIBRE_TRANSLATE,
+    /** DeepSeek LLM翻译 */
+    DEEPSEEK,
+    /** Kimi / Moonshot AI LLM翻译 */
+    KIMI
 }
 
 /**

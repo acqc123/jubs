@@ -48,11 +48,12 @@
                         android:textStyle="bold"
                         android:textColor="@color/primary_color" />
 
+                    <!-- 语音识别 API Key -->
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="@string/speech_api_key"
+                        android:hint="@string/speech_api_key_label"
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
                         <com.google.android.material.textfield.TextInputEditText
@@ -62,11 +63,54 @@
                             android:inputType="textPassword" />
                     </com.google.android.material.textfield.TextInputLayout>
 
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/translation_provider"
+                        android:textSize="14sp"
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <!-- 翻译服务提供商选择 -->
+                    <RadioGroup
+                        android:id="@+id/rgTranslationProvider"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/rbLibreTranslate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/provider_libre"
+                            android:checked="true" />
+
+                        <RadioButton
+                            android:id="@+id/rbGoogleTranslate"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/provider_google" />
+
+                        <RadioButton
+                            android:id="@+id/rbDeepSeek"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/provider_deepseek" />
+
+                        <RadioButton
+                            android:id="@+id/rbKimi"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/provider_kimi" />
+                    </RadioGroup>
+
+                    <!-- 翻译 API Key -->
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:hint="@string/translation_api_key"
+                        android:hint="@string/translation_api_key_label"
                         style="@style/Widget.Material3.TextInputLayout.OutlinedBox">
 
                         <com.google.android.material.textfield.TextInputEditText
@@ -75,6 +119,15 @@
                             android:layout_height="wrap_content"
                             android:inputType="textPassword" />
                     </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        android:id="@+id/tvApiKeyHint"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="选择DeepSeek或Kimi时需要填写对应API Key，LibreTranslate免费无需Key"
+                        android:textSize="12sp"
+                        android:textColor="@android:color/darker_gray" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

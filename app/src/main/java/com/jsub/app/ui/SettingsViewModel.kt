@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.jsub.app.data.SettingsRepository
 import com.jsub.app.model.AppSettings
 import com.jsub.app.model.DisplayMode
+import com.jsub.app.model.TranslationProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -33,6 +34,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _translationApiKey = MutableLiveData<String>()
     val translationApiKey: LiveData<String> = _translationApiKey
 
+    private val _translationProvider = MutableLiveData<TranslationProvider>()
+    val translationProvider: LiveData<TranslationProvider> = _translationProvider
+
     private val _displayMode = MutableLiveData<DisplayMode>()
     val displayMode: LiveData<DisplayMode> = _displayMode
 
@@ -57,6 +61,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             _settings.value = settings
             _speechApiKey.value = settings.speechApiKey
             _translationApiKey.value = settings.translationApiKey
+            _translationProvider.value = settings.translationProvider
             _displayMode.value = settings.displayMode
             _fontSize.value = settings.fontSize
             _bgOpacity.value = settings.bgOpacity
@@ -70,6 +75,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         speechKey: String = _speechApiKey.value ?: "",
         translationKey: String = _translationApiKey.value ?: "",
         mode: DisplayMode = _displayMode.value ?: DisplayMode.BILINGUAL,
+        provider: TranslationProvider = _translationProvider.value ?: TranslationProvider.LIBRE_TRANSLATE,
         fontSize: Int = _fontSize.value ?: 16,
         bgOpacity: Int = _bgOpacity.value ?: 80
     ) {
@@ -79,7 +85,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 translationApiKey = translationKey,
                 displayMode = mode,
                 fontSize = fontSize,
-                bgOpacity = bgOpacity
+                bgOpacity = bgOpacity,
+                translationProvider = provider
             )
             withContext(Dispatchers.IO) {
                 repository.saveSettings(newSettings)
@@ -96,6 +103,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setTranslationApiKey(key: String) {
         _translationApiKey.value = key
+    }
+
+    fun setTranslationProvider(provider: TranslationProvider) {
+        _translationProvider.value = provider
     }
 
     fun setDisplayMode(mode: DisplayMode) {

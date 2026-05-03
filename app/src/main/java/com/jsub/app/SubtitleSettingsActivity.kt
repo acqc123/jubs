@@ -2,7 +2,6 @@ package com.jsub.app
 
 import android.os.Bundle
 import android.widget.Button
-import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.SeekBar
 import android.widget.TextView
@@ -12,13 +11,15 @@ import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.textfield.TextInputEditText
 import com.jsub.app.model.DisplayMode
+import com.jsub.app.model.TranslationProvider
 import com.jsub.app.ui.SettingsViewModel
 
 /**
  * 字幕设置Activity
  *
  * 提供字幕相关的配置选项：
- * - API Key设置
+ * - API Key设置（语音识别 + 翻译服务）
+ * - 翻译服务提供商选择（Google / LibreTranslate / DeepSeek / Kimi）
  * - 显示模式选择
  * - 字体大小调整
  * - 背景不透明度调整
@@ -30,11 +31,11 @@ class SubtitleSettingsActivity : AppCompatActivity() {
     private lateinit var toolbar: MaterialToolbar
     private lateinit var etSpeechApiKey: TextInputEditText
     private lateinit var etTranslationApiKey: TextInputEditText
+    private lateinit var rgTranslationProvider: RadioGroup
     private lateinit var rgDisplayMode: RadioGroup
     private lateinit var sliderFontSize: SeekBar
     private lateinit var sliderOpacity: SeekBar
-    private lateinit var tvFontSizeValue: TextView
-    private lateinit var tvOpacityValue: TextView
+    private lateinit var tvApiKeyHint: TextView
     private lateinit var btnSave: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,18 +55,12 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         toolbar = findViewById(R.id.toolbar)
         etSpeechApiKey = findViewById(R.id.etSpeechApiKey)
         etTranslationApiKey = findViewById(R.id.etTranslationApiKey)
+        rgTranslationProvider = findViewById(R.id.rgTranslationProvider)
         rgDisplayMode = findViewById(R.id.rgDisplayMode)
         sliderFontSize = findViewById(R.id.sliderFontSize)
         sliderOpacity = findViewById(R.id.sliderOpacity)
+        tvApiKeyHint = findViewById(R.id.tvApiKeyHint)
         btnSave = findViewById(R.id.btnSave)
-
-        // 数值标签
-        tvFontSizeValue = TextView(this).apply {
-            textSize = 12f
-        }
-        tvOpacityValue = TextView(this).apply {
-            textSize = 12f
-        }
 
         toolbar.setNavigationOnClickListener {
             finish()
@@ -79,6 +74,17 @@ class SubtitleSettingsActivity : AppCompatActivity() {
 
         viewModel.translationApiKey.observe(this) { key ->
             etTranslationApiKey.setText(key)
+        }
+
+        viewModel.translationProvider.observe(this) { provider ->
+            when (provider) {
+                TranslationProvider.LIBRE_TRANSLATE -> rgTranslationProvider.check(R.id.rbLibreTranslate)
+                TranslationProvider.GOOGLE_TRANSLATE -> rgTranslationProvider.check(R.id.rbGoogleTranslate)
+                TranslationProvider.DEEPSEEK -> rgTranslationProvider.check(R.id.rbDeepSeek)
+                TranslationProvider.KIMI -> rgTranslationProvider.check(R.id.rbKimi)
+                else -> rgTranslationProvider.check(R.id.rbLibreTranslate)
+            }
+            updateApiKeyHint(provider)
         }
 
         viewModel.displayMode.observe(this) { mode ->
@@ -107,6 +113,18 @@ class SubtitleSettingsActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
+        // 翻译服务提供商选择
+        rgTranslationProvider.setOnCheckedChangeListener { _, checkedId ->
+            val provider = when (checkedId) {
+                R.id.rbGoogleTranslate -> TranslationProvider.GOOGLE_TRANSLATE
+                R.id.rbDeepSeek -> TranslationProvider.DEEPSEEK
+                R.id.rbKimi -> TranslationProvider.KIMI
+                else -> TranslationProvider.LIBRE_TRANSLATE
+            }
+            viewModel.setTranslationProvider(provider)
+            updateApiKeyHint(provider)
+        }
+
         // 显示模式选择
         rgDisplayMode.setOnCheckedChangeListener { _, checkedId ->
             val mode = when (checkedId) {
@@ -145,13 +163,34 @@ class SubtitleSettingsActivity : AppCompatActivity() {
                 else -> DisplayMode.BILINGUAL
             }
 
+            val provider = when (rgTranslationProvider.checkedRadioButtonId) {
+                R.id.rbGoogleTranslate -> TranslationProvider.GOOGLE_TRANSLATE
+                R.id.rbDeepSeek -> TranslationProvider.DEEPSEEK
+                R.id.rbKimi -> TranslationProvider.KIMI
+                else -> TranslationProvider.LIBRE_TRANSLATE
+            }
+
             viewModel.saveSettings(
                 speechKey = etSpeechApiKey.text?.toString() ?: "",
                 translationKey = etTranslationApiKey.text?.toString() ?: "",
                 mode = mode,
+                provider = provider,
                 fontSize = sliderFontSize.progress.coerceIn(12, 32),
                 bgOpacity = sliderOpacity.progress.coerceIn(0, 100)
             )
         }
+    }
+
+    /**
+     * 根据选择的翻译服务更新API Key提示文字
+     */
+    private fun updateApiKeyHint(provider: TranslationProvider) {
+        val hintText = when (provider) {
+            TranslationProvider.LIBRE_TRANSLATE -> "LibreTranslate是免费服务，无需填写API Key"
+            TranslationProvider.GOOGLE_TRANSLATE -> "请填写Google Cloud Translation API Key"
+            TranslationProvider.DEEPSEEK -> "请填写DeepSeek API Key（从 platform.deepseek.com 获取）"
+            TranslationProvider.KIMI -> "请填写Kimi API Key（从 platform.moonshot.cn 获取）"
+        }
+        tvApiKeyHint.text = hintText
     }
 }
