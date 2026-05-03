@@ -235,14 +235,12 @@
                         android:textSize="14sp"
                         android:textColor="@color/black" />
 
-                    <com.google.android.material.slider.Slider
+                    <SeekBar
                         android:id="@+id/sliderFontSize"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:valueFrom="12"
-                        android:valueTo="32"
-                        android:value="16"
-                        android:stepSize="1" />
+                        android:max="32"
+                        android:progress="16" />
 
                     <!-- 背景不透明度 -->
                     <TextView

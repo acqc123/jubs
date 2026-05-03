@@ -49,9 +49,13 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            FloatingSubtitleService.start(this, result.resultCode, result.data!!)
-            updateUIState(true)
-            Toast.makeText(this, "字幕服务已启动", Toast.LENGTH_SHORT).show()
+            try {
+                FloatingSubtitleService.start(this, result.resultCode, result.data!!)
+                Toast.makeText(this, "正在启动字幕服务...", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "启动字幕服务失败", e)
+                Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
         } else {
             Toast.makeText(this, "需要录屏权限才能捕获音频", Toast.LENGTH_LONG).show()
         }

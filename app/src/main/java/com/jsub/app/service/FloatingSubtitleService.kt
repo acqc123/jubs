@@ -1,6 +1,8 @@
 package com.jsub.app.service
 
 import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
@@ -55,7 +57,9 @@ class FloatingSubtitleService : Service() {
                 putExtra(EXTRA_RESULT_CODE, resultCode)
                 putExtra(EXTRA_RESULT_DATA, data)
             }
-            context.startForegroundService(intent)
+            // Android 10+ 在 Activity onPause 后调用 startForegroundService 会被系统拒绝
+            // 使用 ContextCompat.startForegroundService 它会自动适配版本
+            androidx.core.content.ContextCompat.startForegroundService(context, intent)
         }
 
         fun stop(context: Context) {
@@ -318,19 +322,16 @@ class FloatingSubtitleService : Service() {
      * 构建前台服务通知
      */
     private fun buildNotification(): Notification {
+        // 确保通知渠道存在（防止JSubApplication初始化失败）
+        ensureNotificationChannel()
+
         val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
+            this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val stopIntent = PendingIntent.getService(
-            this,
-            1,
-            Intent(this, FloatingSubtitleService::class.java).apply {
-                action = ACTION_STOP
-            },
+            this, 1, Intent(this, FloatingSubtitleService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -343,5 +344,25 @@ class FloatingSubtitleService : Service() {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+    }
+
+    /**
+     * 确保通知渠道已创建
+     */
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (manager.getNotificationChannel(JSubApplication.CHANNEL_ID) == null) {
+                val channel = NotificationChannel(
+                    JSubApplication.CHANNEL_ID,
+                    "字幕服务",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "保持字幕服务在前台运行"
+                    setShowBadge(false)
+                }
+                manager.createNotificationChannel(channel)
+            }
+        }
     }
 }

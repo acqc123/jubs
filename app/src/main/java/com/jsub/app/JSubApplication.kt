@@ -10,7 +10,11 @@ class JSubApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        try {
+            createNotificationChannel()
+        } catch (e: Exception) {
+            android.util.Log.e("JSubApplication", "Failed to create notification channel", e)
+        }
     }
 
     private fun createNotificationChannel() {
