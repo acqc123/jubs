@@ -45,29 +45,40 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
 
-        viewModel = ViewModelProvider(this)[SettingsViewModel::class.java]
+        try {
+            viewModel = ViewModelProvider(this)[SettingsViewModel::class.java]
 
-        initViews()
-        observeViewModel()
-        setupListeners()
+            initViews()
+            observeViewModel()
+            setupListeners()
 
-        viewModel.loadSettings()
+            viewModel.loadSettings()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "设置页面加载失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            finish()
+        }
     }
 
     private fun initViews() {
-        toolbar = findViewById(R.id.toolbar)
-        etSpeechApiKey = findViewById(R.id.etSpeechApiKey)
-        etTranslationApiKey = findViewById(R.id.etTranslationApiKey)
-        rgSpeechProvider = findViewById(R.id.rgSpeechProvider)
-        rgTranslationProvider = findViewById(R.id.rgTranslationProvider)
-        rgDisplayMode = findViewById(R.id.rgDisplayMode)
-        sliderFontSize = findViewById(R.id.sliderFontSize)
-        sliderOpacity = findViewById(R.id.sliderOpacity)
-        tvApiKeyHint = findViewById(R.id.tvApiKeyHint)
-        btnSave = findViewById(R.id.btnSave)
+        try {
+            toolbar = findViewById(R.id.toolbar)
+            etSpeechApiKey = findViewById(R.id.etSpeechApiKey)
+            etTranslationApiKey = findViewById(R.id.etTranslationApiKey)
+            rgSpeechProvider = findViewById(R.id.rgSpeechProvider)
+            rgTranslationProvider = findViewById(R.id.rgTranslationProvider)
+            rgDisplayMode = findViewById(R.id.rgDisplayMode)
+            sliderFontSize = findViewById(R.id.sliderFontSize)
+            sliderOpacity = findViewById(R.id.sliderOpacity)
+            tvApiKeyHint = findViewById(R.id.tvApiKeyHint)
+            btnSave = findViewById(R.id.btnSave)
 
-        toolbar.setNavigationOnClickListener {
-            finish()
+            toolbar.setNavigationOnClickListener {
+                finish()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(this, "布局初始化失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }
 

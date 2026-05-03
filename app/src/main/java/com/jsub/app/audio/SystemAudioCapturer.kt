@@ -6,6 +6,7 @@ import android.media.AudioPlaybackCaptureConfiguration
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.projection.MediaProjection
+import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
@@ -38,70 +39,86 @@ class SystemAudioCapturer : AudioCapturer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun startCapture(mediaProjection: MediaProjection) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            Log.e(TAG, "Audio playback capture requires Android 10+ (API 29). Current: API ${Build.VERSION.SDK_INT}")
+            throw IllegalStateException("需要Android 10或更高版本才能捕获系统音频")
+        }
+
         stopCapture()
 
-        val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        val bufferSize = minBufferSize.coerceAtLeast(
-            (SAMPLE_RATE * 2 * BUFFER_DURATION_MS / 1000).toInt()
-        )
-
-        val playbackConfig = AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
-            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
-            .addMatchingUsage(AudioAttributes.USAGE_GAME)
-            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
-            .build()
-
-        audioRecord = AudioRecord.Builder()
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(SAMPLE_RATE)
-                    .setEncoding(AUDIO_FORMAT)
-                    .setChannelMask(CHANNEL_CONFIG)
-                    .build()
+        try {
+            val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+            val bufferSize = minBufferSize.coerceAtLeast(
+                (SAMPLE_RATE * 2 * BUFFER_DURATION_MS / 1000).toInt()
             )
-            .setBufferSizeInBytes(bufferSize * 2)
-            .setAudioPlaybackCaptureConfig(playbackConfig)
-            .build()
 
-        val record = audioRecord ?: run {
-            Log.e(TAG, "Failed to create AudioRecord")
-            return
-        }
+            val playbackConfig = AudioPlaybackCaptureConfiguration.Builder(mediaProjection)
+                .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+                .addMatchingUsage(AudioAttributes.USAGE_GAME)
+                .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+                .build()
 
-        if (record.state != AudioRecord.STATE_INITIALIZED) {
-            Log.e(TAG, "AudioRecord not initialized")
-            return
-        }
+            val recordBuilder = AudioRecord.Builder()
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(SAMPLE_RATE)
+                        .setEncoding(AUDIO_FORMAT)
+                        .setChannelMask(CHANNEL_CONFIG)
+                        .build()
+                )
+                .setBufferSizeInBytes(bufferSize * 2)
 
-        record.startRecording()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                recordBuilder.setAudioPlaybackCaptureConfig(playbackConfig)
+            }
 
-        captureJob = scope.launch {
-            val readBuffer = ByteArray(bufferSize)
-            var accumulatedBuffer = ByteArray(0)
-            val targetBytes = (SAMPLE_RATE * 2 * BUFFER_DURATION_MS / 1000).toInt()
+            audioRecord = recordBuilder.build()
 
-            while (isActive) {
-                try {
-                    val read = record.read(readBuffer, 0, readBuffer.size)
-                    if (read > 0) {
-                        accumulatedBuffer = accumulatedBuffer.plus(readBuffer.copyOfRange(0, read))
-                        while (accumulatedBuffer.size >= targetBytes) {
-                            val chunk = accumulatedBuffer.copyOfRange(0, targetBytes)
-                            accumulatedBuffer = accumulatedBuffer.copyOfRange(
-                                targetBytes,
-                                accumulatedBuffer.size
-                            )
-                            _audioBufferFlow.emit(chunk)
+            val record = audioRecord ?: run {
+                Log.e(TAG, "Failed to create AudioRecord")
+                throw IllegalStateException("无法创建音频录制器")
+            }
+
+            if (record.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "AudioRecord not initialized")
+                throw IllegalStateException("音频录制器初始化失败")
+            }
+
+            record.startRecording()
+
+            captureJob = scope.launch {
+                val readBuffer = ByteArray(bufferSize)
+                var accumulatedBuffer = ByteArray(0)
+                val targetBytes = (SAMPLE_RATE * 2 * BUFFER_DURATION_MS / 1000).toInt()
+
+                while (isActive) {
+                    try {
+                        val read = record.read(readBuffer, 0, readBuffer.size)
+                        if (read > 0) {
+                            accumulatedBuffer = accumulatedBuffer.plus(readBuffer.copyOfRange(0, read))
+                            while (accumulatedBuffer.size >= targetBytes) {
+                                val chunk = accumulatedBuffer.copyOfRange(0, targetBytes)
+                                accumulatedBuffer = accumulatedBuffer.copyOfRange(
+                                    targetBytes,
+                                    accumulatedBuffer.size
+                                )
+                                _audioBufferFlow.emit(chunk)
+                            }
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Audio capture error", e)
+                        delay(100)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Audio capture error", e)
-                    delay(100)
                 }
             }
-        }
 
-        Log.i(TAG, "Audio capture started")
+            Log.i(TAG, "Audio capture started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Audio capture setup failed", e)
+            audioRecord?.release()
+            audioRecord = null
+            throw e
+        }
     }
 
     override fun stopCapture() {

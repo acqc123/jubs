@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import com.jsub.app.JSubApplication
 import com.jsub.app.MainActivity
 import com.jsub.app.R
+import com.jsub.app.api.*
 import com.jsub.app.audio.AudioCapturer
 import com.jsub.app.audio.SystemAudioCapturer
 import com.jsub.app.model.AppSettings
@@ -23,6 +24,8 @@ import com.jsub.app.model.SubtitleLine
 import com.jsub.app.model.TranslationProvider
 import com.jsub.app.speech.SpeechProcessor
 import com.jsub.app.speech.StreamingSpeechProcessor
+import com.jsub.app.speech.engine.EngineFactory
+import com.jsub.app.speech.engine.SenseVoiceEngine
 import com.jsub.app.ui.FloatingSubtitleView
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -88,9 +91,15 @@ class FloatingSubtitleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_START -> handleStart(intent)
-            ACTION_STOP -> handleStop()
+        try {
+            when (intent?.action) {
+                ACTION_START -> handleStart(intent)
+                ACTION_STOP -> handleStop()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in onStartCommand", e)
+            try { stopForeground(true) } catch (_: Exception) {}
+            stopSelf()
         }
         return START_STICKY
     }
@@ -99,7 +108,12 @@ class FloatingSubtitleService : Service() {
         Log.i(TAG, "Starting subtitle service...")
 
         val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-        val resultData = intent.getParcelableExtra<Intent>(EXTRA_RESULT_DATA)
+        val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(EXTRA_RESULT_DATA)
+        }
 
         if (resultCode == -1 || resultData == null) {
             Log.e(TAG, "Invalid MediaProjection data")
@@ -107,10 +121,34 @@ class FloatingSubtitleService : Service() {
             return
         }
 
-        // 启动前台服务
-        startForeground(JSubApplication.NOTIFICATION_ID, buildNotification())
+        // ─── 第一步：立即启动前台服务（必须在5秒内完成！）───
+        try {
+            startForeground(JSubApplication.NOTIFICATION_ID, buildNotification())
+            Log.i(TAG, "Foreground notification started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground", e)
+            stopSelf()
+            return
+        }
 
-        // 初始化MediaProjection
+        // ─── 第二步：在后台协程中完成所有初始化 ───
+        scope.launch {
+            try {
+                doFullStart(resultCode, resultData)
+            } catch (e: Exception) {
+                Log.e(TAG, "Fatal error in service startup", e)
+                isRunning = false
+                try { stopForeground(true) } catch (_: Exception) {}
+                stopSelf()
+            }
+        }
+    }
+
+    /**
+     * 完整启动流程（在后台协程中执行）
+     */
+    private suspend fun doFullStart(resultCode: Int, resultData: Intent) {
+        // 1. 初始化MediaProjection
         val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
             as MediaProjectionManager
         mediaProjection = projectionManager.getMediaProjection(resultCode, resultData)
@@ -120,35 +158,94 @@ class FloatingSubtitleService : Service() {
             stopSelf()
             return
         }
+        Log.i(TAG, "MediaProjection acquired")
 
-        // 加载设置
+        // 2. 加载设置
         settings = loadSettings()
+        Log.i(TAG, "Settings loaded: provider=${settings.speechProvider}, translation=${settings.translationProvider}")
 
-        // 创建悬浮窗
-        floatingView = FloatingSubtitleView(this).apply {
-            setDisplayMode(settings.displayMode)
-            setFontSize(settings.fontSize)
-            setBgOpacity(settings.bgOpacity)
-            show()
+        // 3. 创建并显示悬浮窗（给用户即时反馈）
+        try {
+            floatingView = FloatingSubtitleView(this@FloatingSubtitleService).apply {
+                setDisplayMode(settings.displayMode)
+                setFontSize(settings.fontSize)
+                setBgOpacity(settings.bgOpacity)
+                show()
+            }
+            Log.i(TAG, "Floating view shown")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show floating view", e)
+            // 悬浮窗失败不终止服务，但通知用户
         }
 
-        // 启动音频捕获
+        // 4. 启动音频捕获
         val capturer = SystemAudioCapturer()
         audioCapturer = capturer
-        capturer.startCapture(mediaProjection!!)
+        try {
+            capturer.startCapture(mediaProjection!!)
+            Log.i(TAG, "Audio capture started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start audio capture", e)
+            floatingView?.updateSubtitle(
+                SubtitleLine(
+                    japaneseText = "",
+                    chineseText = "[音频捕获失败: ${e.localizedMessage}]",
+                    timestamp = System.currentTimeMillis(),
+                    isFinal = true
+                )
+            )
+            return
+        }
 
-        // 启动语音处理
-        val processor = StreamingSpeechProcessor.create(
-            context = this,
-            speechProvider = settings.speechProvider,
-            speechApiKey = settings.speechApiKey,
-            translationApiKey = settings.translationApiKey,
-            translationProvider = settings.translationProvider
-        )
+        // 5. 创建并初始化语音处理器（在IO线程初始化模型）
+        val processor = withContext(Dispatchers.IO) {
+            try {
+                val engine = EngineFactory.createEngine(
+                    context = this@FloatingSubtitleService,
+                    provider = settings.speechProvider,
+                    apiKey = settings.speechApiKey
+                )
+
+                // 初始化引擎（SenseVoice需要下载模型）
+                if (engine is SenseVoiceEngine) {
+                    Log.i(TAG, "Initializing SenseVoice engine (may download model)...")
+                    val initSuccess = engine.initialize()
+                    if (!initSuccess) {
+                        Log.w(TAG, "SenseVoice initialization failed, will use online fallback")
+                    }
+                }
+
+                val translationApi: TranslationApi = when (settings.translationProvider) {
+                    TranslationProvider.GOOGLE_TRANSLATE -> GoogleTranslateApi(settings.translationApiKey)
+                    TranslationProvider.LIBRE_TRANSLATE -> LibreTranslateApi()
+                    TranslationProvider.DEEPSEEK -> DeepSeekTranslationApi(settings.translationApiKey)
+                    TranslationProvider.KIMI -> KimiTranslationApi(settings.translationApiKey)
+                }
+
+                StreamingSpeechProcessor(engine, translationApi)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create speech processor", e)
+                null
+            }
+        }
+
+        if (processor == null) {
+            Log.e(TAG, "Speech processor creation failed")
+            return
+        }
+
         speechProcessor = processor
-        processor.startProcessing(capturer.audioBufferFlow)
 
-        // 收集字幕结果
+        // 6. 启动处理
+        try {
+            processor.startProcessing(capturer.audioBufferFlow)
+            Log.i(TAG, "Speech processing started")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start processing", e)
+            return
+        }
+
+        // 7. 收集字幕结果
         scope.launch {
             processor.subtitleFlow.collectLatest { subtitle ->
                 updateSubtitle(subtitle)

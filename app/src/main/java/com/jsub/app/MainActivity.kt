@@ -111,9 +111,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 3. 请求MediaProjection（录屏权限）
-        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
-            as MediaProjectionManager
-        mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+        try {
+            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                as MediaProjectionManager
+            mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch media projection", e)
+            Toast.makeText(this, "启动录屏失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
     }
 
     /**
