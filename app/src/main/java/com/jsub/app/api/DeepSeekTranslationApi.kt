@@ -35,7 +35,7 @@ class DeepSeekTranslationApi(
         private const val INITIAL_RETRY_DELAY = 1000L
 
         /** 系统提示词：指导模型进行精准翻译 */
-        private const val SYSTEM_PROMPT = """
+        private val SYSTEM_PROMPT = """
             你是一位专业的日语翻译助手。请将用户提供的日语文本翻译成流畅自然的简体中文。
             要求：
             1. 保持原意准确，不要遗漏信息
@@ -131,7 +131,7 @@ class DeepSeekTranslationApi(
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    val body = response.body.string()
+                    val body = response.body?.string() ?: ""
 
                     // 处理限流
                     if (response.code == 429) {
