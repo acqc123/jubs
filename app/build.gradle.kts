@@ -52,4 +52,7 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // ONNX Runtime for SenseVoice local inference
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
 }

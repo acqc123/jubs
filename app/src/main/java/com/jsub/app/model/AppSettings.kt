@@ -27,7 +27,11 @@ enum class AudioSource {
  */
 enum class SpeechProvider {
     /** OpenAI Whisper */
-    WHISPER
+    WHISPER,
+    /** SenseVoice 本地ONNX模型（离线） */
+    SENSEVOICE_LOCAL,
+    /** Anime-Whisper HuggingFace在线API（动漫优化） */
+    ANIME_WHISPER
 }
 
 /**
@@ -56,7 +60,7 @@ data class AppSettings(
     val fontSize: Int = 16,
     val bgOpacity: Int = 80,
     val audioSource: AudioSource = AudioSource.SYSTEM_AUDIO,
-    val speechProvider: SpeechProvider = SpeechProvider.WHISPER,
+    val speechProvider: SpeechProvider = SpeechProvider.SENSEVOICE_LOCAL,
     val translationProvider: TranslationProvider = TranslationProvider.LIBRE_TRANSLATE,
     val subtitleColor: Int = 0xFFFFFF,
     val subtitlePositionY: Int = 80

@@ -140,6 +140,8 @@ class FloatingSubtitleService : Service() {
 
         // 启动语音处理
         val processor = StreamingSpeechProcessor.create(
+            context = this,
+            speechProvider = settings.speechProvider,
             speechApiKey = settings.speechApiKey,
             translationApiKey = settings.translationApiKey,
             translationProvider = settings.translationProvider

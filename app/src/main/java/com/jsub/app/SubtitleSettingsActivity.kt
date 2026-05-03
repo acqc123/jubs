@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.textfield.TextInputEditText
 import com.jsub.app.model.DisplayMode
+import com.jsub.app.model.SpeechProvider
 import com.jsub.app.model.TranslationProvider
 import com.jsub.app.ui.SettingsViewModel
 
@@ -19,6 +20,7 @@ import com.jsub.app.ui.SettingsViewModel
  *
  * 提供字幕相关的配置选项：
  * - API Key设置（语音识别 + 翻译服务）
+ * - 语音识别引擎选择（Whisper / SenseVoice本地 / AnimeWhisper）
  * - 翻译服务提供商选择（Google / LibreTranslate / DeepSeek / Kimi）
  * - 显示模式选择
  * - 字体大小调整
@@ -31,6 +33,7 @@ class SubtitleSettingsActivity : AppCompatActivity() {
     private lateinit var toolbar: MaterialToolbar
     private lateinit var etSpeechApiKey: TextInputEditText
     private lateinit var etTranslationApiKey: TextInputEditText
+    private lateinit var rgSpeechProvider: RadioGroup
     private lateinit var rgTranslationProvider: RadioGroup
     private lateinit var rgDisplayMode: RadioGroup
     private lateinit var sliderFontSize: SeekBar
@@ -55,6 +58,7 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         toolbar = findViewById(R.id.toolbar)
         etSpeechApiKey = findViewById(R.id.etSpeechApiKey)
         etTranslationApiKey = findViewById(R.id.etTranslationApiKey)
+        rgSpeechProvider = findViewById(R.id.rgSpeechProvider)
         rgTranslationProvider = findViewById(R.id.rgTranslationProvider)
         rgDisplayMode = findViewById(R.id.rgDisplayMode)
         sliderFontSize = findViewById(R.id.sliderFontSize)
@@ -74,6 +78,15 @@ class SubtitleSettingsActivity : AppCompatActivity() {
 
         viewModel.translationApiKey.observe(this) { key ->
             etTranslationApiKey.setText(key)
+        }
+
+        viewModel.speechProvider.observe(this) { provider ->
+            when (provider) {
+                SpeechProvider.WHISPER -> rgSpeechProvider.check(R.id.rbWhisper)
+                SpeechProvider.SENSEVOICE_LOCAL -> rgSpeechProvider.check(R.id.rbSenseVoice)
+                SpeechProvider.ANIME_WHISPER -> rgSpeechProvider.check(R.id.rbAnimeWhisper)
+                else -> rgSpeechProvider.check(R.id.rbSenseVoice)
+            }
         }
 
         viewModel.translationProvider.observe(this) { provider ->
@@ -113,6 +126,16 @@ class SubtitleSettingsActivity : AppCompatActivity() {
     }
 
     private fun setupListeners() {
+        // 语音识别引擎选择
+        rgSpeechProvider.setOnCheckedChangeListener { _, checkedId ->
+            val provider = when (checkedId) {
+                R.id.rbWhisper -> SpeechProvider.WHISPER
+                R.id.rbAnimeWhisper -> SpeechProvider.ANIME_WHISPER
+                else -> SpeechProvider.SENSEVOICE_LOCAL
+            }
+            viewModel.setSpeechProvider(provider)
+        }
+
         // 翻译服务提供商选择
         rgTranslationProvider.setOnCheckedChangeListener { _, checkedId ->
             val provider = when (checkedId) {
@@ -157,6 +180,12 @@ class SubtitleSettingsActivity : AppCompatActivity() {
 
         // 保存按钮
         btnSave.setOnClickListener {
+            val speechProvider = when (rgSpeechProvider.checkedRadioButtonId) {
+                R.id.rbWhisper -> SpeechProvider.WHISPER
+                R.id.rbAnimeWhisper -> SpeechProvider.ANIME_WHISPER
+                else -> SpeechProvider.SENSEVOICE_LOCAL
+            }
+
             val mode = when (rgDisplayMode.checkedRadioButtonId) {
                 R.id.rbChineseOnly -> DisplayMode.CHINESE_ONLY
                 R.id.rbJapaneseOnly -> DisplayMode.JAPANESE_ONLY
@@ -173,6 +202,7 @@ class SubtitleSettingsActivity : AppCompatActivity() {
             viewModel.saveSettings(
                 speechKey = etSpeechApiKey.text?.toString() ?: "",
                 translationKey = etTranslationApiKey.text?.toString() ?: "",
+                speechProvider = speechProvider,
                 mode = mode,
                 provider = provider,
                 fontSize = sliderFontSize.progress.coerceIn(12, 32),

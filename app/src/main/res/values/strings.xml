@@ -22,6 +22,17 @@
     <string name="provider_kimi">Kimi / Moonshot AI（LLM翻译）</string>
     <string name="speech_api_key_label">语音识别 API Key（OpenAI Whisper）</string>
     <string name="translation_api_key_label">翻译服务 API Key</string>
+    <string name="speech_provider">语音识别引擎</string>
+    <string name="speech_sensevoice">SenseVoice（本地离线，推荐）</string>
+    <string name="speech_sensevoice_desc">无需网络，首次需下载200MB模型</string>
+    <string name="speech_whisper">OpenAI Whisper（在线）</string>
+    <string name="speech_whisper_desc">需要OpenAI API Key</string>
+    <string name="speech_anime_whisper">Anime-Whisper（在线，动漫特化）</string>
+    <string name="speech_anime_whisper_desc">动漫/ASMR识别更准，可选填HF Token</string>
+    <string name="model_download_title">模型下载</string>
+    <string name="model_downloading">正在下载SenseVoice模型…</string>
+    <string name="model_download_success">模型下载完成</string>
+    <string name="model_download_failed">模型下载失败，请检查网络</string>
     <string name="speech_api_provider">语音识别服务</string>
     <string name="translation_api_provider">翻译服务</string>
     <string name="subtitle_font_size">字幕字体大小</string>

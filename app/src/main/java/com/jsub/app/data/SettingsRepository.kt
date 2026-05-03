@@ -57,8 +57,8 @@ class SettingsRepository(context: Context) {
                 AudioSource.SYSTEM_AUDIO
             ),
             speechProvider = safeParseEnum(
-                prefs.getString(KEY_SPEECH_PROVIDER, SpeechProvider.WHISPER.name),
-                SpeechProvider.WHISPER
+                prefs.getString(KEY_SPEECH_PROVIDER, SpeechProvider.SENSEVOICE_LOCAL.name),
+                SpeechProvider.SENSEVOICE_LOCAL
             ),
             translationProvider = safeParseEnum(
                 prefs.getString(KEY_TRANSLATION_PROVIDER, TranslationProvider.LIBRE_TRANSLATE.name),

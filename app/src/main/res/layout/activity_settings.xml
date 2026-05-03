@@ -48,6 +48,42 @@
                         android:textStyle="bold"
                         android:textColor="@color/primary_color" />
 
+                    <!-- 语音识别引擎选择 -->
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/speech_provider"
+                        android:textSize="14sp"
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
+
+                    <RadioGroup
+                        android:id="@+id/rgSpeechProvider"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical">
+
+                        <RadioButton
+                            android:id="@+id/rbSenseVoice"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/speech_sensevoice"
+                            android:checked="true" />
+
+                        <RadioButton
+                            android:id="@+id/rbWhisper"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/speech_whisper" />
+
+                        <RadioButton
+                            android:id="@+id/rbAnimeWhisper"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/speech_anime_whisper" />
+                    </RadioGroup>
+
                     <!-- 语音识别 API Key -->
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"

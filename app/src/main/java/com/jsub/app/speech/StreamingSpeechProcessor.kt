@@ -1,17 +1,18 @@
 package com.jsub.app.speech
 
+import android.content.Context
 import android.util.Log
 import com.jsub.app.api.DeepSeekTranslationApi
 import com.jsub.app.api.GoogleTranslateApi
 import com.jsub.app.api.KimiTranslationApi
 import com.jsub.app.api.LibreTranslateApi
-import com.jsub.app.api.RecognitionResult
-import com.jsub.app.api.SpeechRecognitionApi
 import com.jsub.app.api.TranslationApi
-import com.jsub.app.api.WhisperApi
 import com.jsub.app.model.DisplayMode
+import com.jsub.app.model.SpeechProvider
 import com.jsub.app.model.SubtitleLine
 import com.jsub.app.model.TranslationProvider
+import com.jsub.app.speech.engine.EngineFactory
+import com.jsub.app.speech.engine.SpeechRecognitionEngine
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -20,14 +21,15 @@ import kotlinx.coroutines.flow.*
  *
  * 核心处理引擎，负责：
  * 1. 接收音频流并进行VAD语音活动检测
- * 2. 对语音段调用语音识别API（日文）
+ * 2. 对语音段调用语音识别引擎（日文）
  * 3. 对识别结果调用翻译API（日→中）
  * 4. 输出字幕数据流
  *
  * 支持中间结果（isFinal=false）和最终结果（isFinal=true）。
+ * 支持多种语音识别引擎（Whisper / SenseVoice本地 / AnimeWhisper）。
  */
 class StreamingSpeechProcessor(
-    private val speechApi: SpeechRecognitionApi,
+    private val speechEngine: SpeechRecognitionEngine,
     private val translationApi: TranslationApi
 ) : SpeechProcessor {
 
@@ -40,18 +42,20 @@ class StreamingSpeechProcessor(
         private const val MAX_BUFFER_SIZE = 960000 // 最大缓冲区 ~30秒音频
 
         fun create(
+            context: Context,
+            speechProvider: SpeechProvider,
             speechApiKey: String,
             translationApiKey: String,
             translationProvider: TranslationProvider
         ): StreamingSpeechProcessor {
-            val speechApi: SpeechRecognitionApi = WhisperApi(speechApiKey)
+            val speechEngine = EngineFactory.createEngine(context, speechProvider, speechApiKey)
             val translationApi: TranslationApi = when (translationProvider) {
                 TranslationProvider.GOOGLE_TRANSLATE -> GoogleTranslateApi(translationApiKey)
                 TranslationProvider.LIBRE_TRANSLATE -> LibreTranslateApi()
                 TranslationProvider.DEEPSEEK -> DeepSeekTranslationApi(translationApiKey)
                 TranslationProvider.KIMI -> KimiTranslationApi(translationApiKey)
             }
-            return StreamingSpeechProcessor(speechApi, translationApi)
+            return StreamingSpeechProcessor(speechEngine, translationApi)
         }
     }
 
@@ -107,7 +111,7 @@ class StreamingSpeechProcessor(
             }
         }
 
-        Log.i(TAG, "Speech processing started")
+        Log.i(TAG, "Speech processing started with engine: ${speechEngine.engineName}")
     }
 
     override fun stopProcessing() {
@@ -183,9 +187,9 @@ class StreamingSpeechProcessor(
 
         // 语音识别
         _stateFlow.value = ProcessorState.RECOGNIZING
-        val recognitionResult = speechApi.recognize(audioData)
+        val recognitionResult = speechEngine.recognize(audioData)
 
-        if (recognitionResult.text.isBlank() || recognitionResult.text.startsWith("[")) {
+        if (recognitionResult.isBlank() || recognitionResult.startsWith("[")) {
             // 识别失败或无内容
             return
         }
@@ -193,7 +197,7 @@ class StreamingSpeechProcessor(
         // 翻译
         _stateFlow.value = ProcessorState.TRANSLATING
         val translatedText = try {
-            translationApi.translate(recognitionResult.text)
+            translationApi.translate(recognitionResult)
         } catch (e: Exception) {
             Log.e(TAG, "Translation failed", e)
             "[翻译失败]"
@@ -201,7 +205,7 @@ class StreamingSpeechProcessor(
 
         // 输出字幕
         val subtitle = SubtitleLine(
-            japaneseText = recognitionResult.text,
+            japaneseText = recognitionResult,
             chineseText = translatedText,
             timestamp = System.currentTimeMillis(),
             isFinal = isFinal
@@ -210,7 +214,7 @@ class StreamingSpeechProcessor(
         _subtitleFlow.emit(subtitle)
         _stateFlow.value = ProcessorState.LISTENING
 
-        Log.d(TAG, "Subtitle ${if (isFinal) "FINAL" else "interim"}: ${recognitionResult.text} -> $translatedText")
+        Log.d(TAG, "Subtitle ${if (isFinal) "FINAL" else "interim"}: $recognitionResult -> $translatedText")
     }
 
     private fun MutableList<ByteArray>.flattenToByteArray(): ByteArray {

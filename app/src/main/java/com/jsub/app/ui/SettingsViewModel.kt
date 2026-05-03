@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.jsub.app.data.SettingsRepository
 import com.jsub.app.model.AppSettings
 import com.jsub.app.model.DisplayMode
+import com.jsub.app.model.SpeechProvider
 import com.jsub.app.model.TranslationProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,6 +34,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     private val _translationApiKey = MutableLiveData<String>()
     val translationApiKey: LiveData<String> = _translationApiKey
+
+    private val _speechProvider = MutableLiveData<SpeechProvider>()
+    val speechProvider: LiveData<SpeechProvider> = _speechProvider
 
     private val _translationProvider = MutableLiveData<TranslationProvider>()
     val translationProvider: LiveData<TranslationProvider> = _translationProvider
@@ -61,6 +65,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             _settings.value = settings
             _speechApiKey.value = settings.speechApiKey
             _translationApiKey.value = settings.translationApiKey
+            _speechProvider.value = settings.speechProvider
             _translationProvider.value = settings.translationProvider
             _displayMode.value = settings.displayMode
             _fontSize.value = settings.fontSize
@@ -74,6 +79,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun saveSettings(
         speechKey: String = _speechApiKey.value ?: "",
         translationKey: String = _translationApiKey.value ?: "",
+        speechProvider: SpeechProvider = _speechProvider.value ?: SpeechProvider.SENSEVOICE_LOCAL,
         mode: DisplayMode = _displayMode.value ?: DisplayMode.BILINGUAL,
         provider: TranslationProvider = _translationProvider.value ?: TranslationProvider.LIBRE_TRANSLATE,
         fontSize: Int = _fontSize.value ?: 16,
@@ -86,6 +92,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 displayMode = mode,
                 fontSize = fontSize,
                 bgOpacity = bgOpacity,
+                speechProvider = speechProvider,
                 translationProvider = provider
             )
             withContext(Dispatchers.IO) {
@@ -103,6 +110,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun setTranslationApiKey(key: String) {
         _translationApiKey.value = key
+    }
+
+    fun setSpeechProvider(provider: SpeechProvider) {
+        _speechProvider.value = provider
     }
 
     fun setTranslationProvider(provider: TranslationProvider) {
