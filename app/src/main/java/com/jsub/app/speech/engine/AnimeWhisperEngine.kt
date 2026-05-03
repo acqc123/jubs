@@ -562,6 +562,4 @@ class AnimeWhisperEngine(
 
         return header + pcmData
     }
-}
    }
-}
