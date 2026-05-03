@@ -74,7 +74,7 @@ class LibreTranslateApi : TranslationApi {
                     .build()
 
                 client.newCall(request).execute().use { response ->
-                    val body = response.body.string()
+                    val body = response.body?.string() ?: ""
 
                     if (response.code == 429) {
                         Log.w(TAG, "Rate limited (429), retrying in ${retryDelay}ms (attempt ${attempt + 1})")
