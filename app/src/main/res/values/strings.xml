@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">JSub 实时日译中字幕</string>
+    <string name="app_title">JSub 悬浮字幕</string>
+    <string name="start_subtitle">开启字幕</string>
+    <string name="stop_subtitle">停止字幕</string>
+    <string name="settings">设置</string>
+    <string name="settings_title">字幕设置</string>
+    <string name="permission_required">需要权限</string>
+    <string name="overlay_permission_desc">需要悬浮窗权限来显示字幕</string>
+    <string name="grant_permission">授予权限</string>
+    <string name="service_running">字幕服务运行中</string>
+    <string name="tap_to_open">点击打开应用</string>
+    <string name="api_settings">API 设置</string>
+    <string name="appearance_settings">外观设置</string>
+    <string name="speech_api_key">语音识别 API Key</string>
+    <string name="translation_api_key">翻译 API Key</string>
+    <string name="speech_api_provider">语音识别服务</string>
+    <string name="translation_api_provider">翻译服务</string>
+    <string name="subtitle_font_size">字幕字体大小</string>
+    <string name="subtitle_bg_opacity">背景不透明度</string>
+    <string name="display_mode">显示模式</string>
+    <string name="display_bilingual">双语（日文+中文）</string>
+    <string name="display_chinese_only">仅中文</string>
+    <string name="display_japanese_only">仅日文</string>
+    <string name="audio_source">音频源</string>
+    <string name="audio_system">系统音频</string>
+    <string name="audio_microphone">麦克风</string>
+    <string name="subtitle_color">字幕颜色</string>
+    <string name="subtitle_position">字幕位置</string>
+    <string name="subtitle_preview">字幕预览</string>
+    <string name="select_to_configure">选择以配置</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="service_notification_channel">字幕服务</string>
+    <string name="service_notification_desc">保持字幕服务运行</string>
+    <string name="subtitle_moving_hint">拖动调整位置</string>
+    <string name="close_subtitle">关闭字幕</string>
+    <string name="minimize_subtitle">最小化</string>
+    <string name="expand_subtitle">展开</string>
+    <string name="recording_audio">正在捕获音频...</string>
+    <string name="recognizing">识别中...</string>
+    <string name="translating">翻译中...</string>
+    <string name="error_network">网络错误，请检查连接</string>
+    <string name="error_api">API错误: %1$s</string>
+    <string name="error_no_audio">未检测到音频，请播放视频或音频</string>
+</resources>

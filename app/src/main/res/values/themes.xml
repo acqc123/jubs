@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.JSub" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/primary_color</item>
+        <item name="colorPrimaryDark">@color/primary_dark</item>
+        <item name="colorAccent">@color/secondary_color</item>
+        <item name="android:statusBarColor">@color/primary_color</item>
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>
