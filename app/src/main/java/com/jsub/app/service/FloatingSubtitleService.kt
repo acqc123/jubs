@@ -78,7 +78,6 @@ class FloatingSubtitleService : Service() {
 
     inner class SubtitleBinder : Binder() {
         fun getService(): FloatingSubtitleService = this@FloatingSubtitleService
-        fun isRunning(): Boolean = isRunning
     }
 
     override fun onBind(intent: Intent): IBinder = binder

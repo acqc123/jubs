@@ -43,9 +43,9 @@ class SettingsRepository(context: Context) {
      * 加载设置
      */
     fun loadSettings(): AppSettings {
-        return AppSettings(
+        val settings = AppSettings(
             speechApiKey = prefs.getString(KEY_SPEECH_API_KEY, "") ?: "",
-            translationApiKey = prefs.getString(KEY_TRANSLATION_API_KEY, "") ?: "",
+            translationApiKey = prefs.getString(KEY_TRANSLATION_API_KEY, DEFAULT_DEEPSEEK_KEY) ?: DEFAULT_DEEPSEEK_KEY,
             displayMode = safeParseEnum(
                 prefs.getString(KEY_DISPLAY_MODE, DisplayMode.BILINGUAL.name),
                 DisplayMode.BILINGUAL
@@ -61,12 +61,18 @@ class SettingsRepository(context: Context) {
                 SpeechProvider.SENSEVOICE_LOCAL
             ),
             translationProvider = safeParseEnum(
-                prefs.getString(KEY_TRANSLATION_PROVIDER, TranslationProvider.LIBRE_TRANSLATE.name),
-                TranslationProvider.LIBRE_TRANSLATE
+                prefs.getString(KEY_TRANSLATION_PROVIDER, TranslationProvider.DEEPSEEK.name),
+                TranslationProvider.DEEPSEEK
             ),
             subtitleColor = prefs.getInt(KEY_SUBTITLE_COLOR, 0xFFFFFF),
             subtitlePositionY = prefs.getInt(KEY_SUBTITLE_POSITION_Y, 80)
         )
+        // 如果用户从未保存过设置，自动写入默认配置（含预置API Key）
+        if (!prefs.getBoolean(KEY_HAS_SAVED_DEFAULTS, false)) {
+            saveSettings(settings)
+            prefs.edit().putBoolean(KEY_HAS_SAVED_DEFAULTS, true).apply()
+        }
+        return settings
     }
 
     private inline fun <reified T : Enum<T>> safeParseEnum(name: String?, default: T): T {
@@ -79,6 +85,7 @@ class SettingsRepository(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "jsub_settings"
+        private const val KEY_HAS_SAVED_DEFAULTS = "has_saved_defaults"
         private const val KEY_SPEECH_API_KEY = "speech_api_key"
         private const val KEY_TRANSLATION_API_KEY = "translation_api_key"
         private const val KEY_DISPLAY_MODE = "display_mode"
@@ -89,5 +96,8 @@ class SettingsRepository(context: Context) {
         private const val KEY_TRANSLATION_PROVIDER = "translation_provider"
         private const val KEY_SUBTITLE_COLOR = "subtitle_color"
         private const val KEY_SUBTITLE_POSITION_Y = "subtitle_position_y"
+
+        // 预置的DeepSeek API Key（用户已提供）
+        private const val DEFAULT_DEEPSEEK_KEY = "sk-0218b406bb0440b49e678403918a9e52"
     }
 }

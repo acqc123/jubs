@@ -20,7 +20,7 @@
     <string name="provider_libre">LibreTranslate（免费）</string>
     <string name="provider_deepseek">DeepSeek（LLM翻译）</string>
     <string name="provider_kimi">Kimi / Moonshot AI（LLM翻译）</string>
-    <string name="speech_api_key_label">语音识别 API Key（OpenAI Whisper）</string>
+    <string name="speech_api_key_label">语音识别 API Key（仅Whisper/AnimeWhisper需要）</string>
     <string name="translation_api_key_label">翻译服务 API Key</string>
     <string name="speech_provider">语音识别引擎</string>
     <string name="speech_sensevoice">SenseVoice（本地离线，推荐）</string>

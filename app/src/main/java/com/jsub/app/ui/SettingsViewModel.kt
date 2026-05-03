@@ -81,7 +81,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         translationKey: String = _translationApiKey.value ?: "",
         speechProvider: SpeechProvider = _speechProvider.value ?: SpeechProvider.SENSEVOICE_LOCAL,
         mode: DisplayMode = _displayMode.value ?: DisplayMode.BILINGUAL,
-        provider: TranslationProvider = _translationProvider.value ?: TranslationProvider.LIBRE_TRANSLATE,
+        provider: TranslationProvider = _translationProvider.value ?: TranslationProvider.DEEPSEEK,
         fontSize: Int = _fontSize.value ?: 16,
         bgOpacity: Int = _bgOpacity.value ?: 80
     ) {

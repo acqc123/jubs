@@ -11,10 +11,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.util.concurrent.TimeUnit
@@ -236,7 +236,7 @@ class AnimeWhisperEngine(
                     val request = requestBuilder.build()
 
                     client.newCall(request).execute().use { response ->
-                        val body = response.body.string()
+                        val body = response.body?.string() ?: ""
 
                         when (response.code) {
                             200 -> {
@@ -562,6 +562,4 @@ class AnimeWhisperEngine(
 
         return header + pcmData
     }
-}
    }
-}

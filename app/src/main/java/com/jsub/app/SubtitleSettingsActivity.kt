@@ -95,7 +95,7 @@ class SubtitleSettingsActivity : AppCompatActivity() {
                 TranslationProvider.GOOGLE_TRANSLATE -> rgTranslationProvider.check(R.id.rbGoogleTranslate)
                 TranslationProvider.DEEPSEEK -> rgTranslationProvider.check(R.id.rbDeepSeek)
                 TranslationProvider.KIMI -> rgTranslationProvider.check(R.id.rbKimi)
-                else -> rgTranslationProvider.check(R.id.rbLibreTranslate)
+                else -> rgTranslationProvider.check(R.id.rbDeepSeek)
             }
             updateApiKeyHint(provider)
         }

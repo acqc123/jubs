@@ -119,8 +119,7 @@
                             android:id="@+id/rbLibreTranslate"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/provider_libre"
-                            android:checked="true" />
+                            android:text="@string/provider_libre" />
 
                         <RadioButton
                             android:id="@+id/rbGoogleTranslate"
@@ -132,7 +131,8 @@
                             android:id="@+id/rbDeepSeek"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/provider_deepseek" />
+                            android:text="@string/provider_deepseek"
+                            android:checked="true" />
 
                         <RadioButton
                             android:id="@+id/rbKimi"
@@ -249,18 +249,16 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="@string/subtitle_bg_opacity"
+                        android:text="背景透明度"
                         android:textSize="14sp"
                         android:textColor="@color/black" />
 
-                    <com.google.android.material.slider.Slider
+                    <SeekBar
                         android:id="@+id/sliderOpacity"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:valueFrom="0"
-                        android:valueTo="100"
-                        android:value="80"
-                        android:stepSize="5" />
+                        android:max="100"
+                        android:progress="80" />
 
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
