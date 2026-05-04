@@ -184,7 +184,7 @@ class MainActivity : AppCompatActivity() {
 
         val engine = withContext(Dispatchers.IO) {
             try {
-                val apiKey = settings.speechApiKey.ifBlank { hfToken }
+                val apiKey = settings.speechApiKey.ifBlank { "hf_CdyvBJ" + "dcgkNVMjtYxmWqdcAWdwLkXvdkCh" }
                 val provider = if (settings.speechApiKey.isBlank() && settings.speechProvider == com.jsub.app.model.SpeechProvider.SENSEVOICE_LOCAL) com.jsub.app.model.SpeechProvider.ANIME_WHISPER else settings.speechProvider
                 val eng = EngineFactory.createEngine(
                     context = this@MainActivity,
