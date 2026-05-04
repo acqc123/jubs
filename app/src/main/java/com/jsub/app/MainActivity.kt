@@ -10,6 +10,8 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Button
@@ -40,35 +42,24 @@ class MainActivity : AppCompatActivity() {
     private var isServiceRunning = false
     private var useMicrophone = false
 
-    // 状态广播接收器
+    // Store MediaProjection result for deferred service start
+    private var pendingMediaProjectionCode: Int? = null
+    private var pendingMediaProjectionData: Intent? = null
+    private var pendingUseMicrophone = false
+
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val status = intent?.getStringExtra(FloatingSubtitleService.EXTRA_STATUS) ?: return
             val message = intent.getStringExtra(FloatingSubtitleService.EXTRA_STATUS_MESSAGE) ?: ""
-
-            Log.i(TAG, "Service status: $status - $message")
-
             runOnUiThread {
+                tvStatusDetail.text = message
                 when (status) {
-                    FloatingSubtitleService.STATUS_STARTING -> {
-                        tvStatus.text = "正在启动..."
-                        tvStatusDetail.text = message
-                    }
-                    FloatingSubtitleService.STATUS_FOREGROUND_OK -> {
-                        tvStatus.text = "服务初始化中..."
-                        tvStatusDetail.text = message
-                    }
-                    FloatingSubtitleService.STATUS_FLOATING_VIEW_OK -> {
-                        tvStatus.text = "悬浮窗已就绪"
-                        tvStatusDetail.text = message
-                    }
-                    FloatingSubtitleService.STATUS_AUDIO_OK -> {
-                        tvStatus.text = "音频捕获正常"
-                        tvStatusDetail.text = message
-                    }
+                    FloatingSubtitleService.STATUS_STARTING -> tvStatus.text = "正在启动..."
+                    FloatingSubtitleService.STATUS_FOREGROUND_OK -> tvStatus.text = "服务初始化中..."
+                    FloatingSubtitleService.STATUS_FLOATING_VIEW_OK -> tvStatus.text = "悬浮窗已就绪"
+                    FloatingSubtitleService.STATUS_AUDIO_OK -> tvStatus.text = "音频捕获正常"
                     FloatingSubtitleService.STATUS_AUDIO_FALLBACK -> {
-                        tvStatus.text = "已切换麦克风模式"
-                        tvStatusDetail.text = message
+                        tvStatus.text = "已切换麦克风"
                         Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
                     }
                     FloatingSubtitleService.STATUS_RUNNING -> {
@@ -80,7 +71,6 @@ class MainActivity : AppCompatActivity() {
                         isServiceRunning = false
                         updateUIState(false)
                         tvStatus.text = "启动失败"
-                        tvStatusDetail.text = message
                         Toast.makeText(this@MainActivity, "错误: $message", Toast.LENGTH_LONG).show()
                     }
                     FloatingSubtitleService.STATUS_STOPPED -> {
@@ -92,18 +82,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // MediaProjection launcher - stores result, actual start happens in onResume
     private val mediaProjectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            try {
-                FloatingSubtitleService.start(this, result.resultCode, result.data!!, useMicrophone = false)
-                tvStatus.text = "正在启动..."
-                tvStatusDetail.text = "等待服务初始化..."
-            } catch (e: Exception) {
-                Log.e(TAG, "启动字幕服务失败", e)
-                Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-            }
+            pendingMediaProjectionCode = result.resultCode
+            pendingMediaProjectionData = result.data
+            pendingUseMicrophone = false
+            tvStatus.text = "等待启动..."
+            tvStatusDetail.text = "请在设置中选择要共享的内容"
         } else {
             Toast.makeText(this, "需要录屏权限才能捕获内部音频", Toast.LENGTH_LONG).show()
         }
@@ -112,19 +100,44 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         initViews()
-        checkPermissionsOnLaunch()
     }
 
     override fun onResume() {
         super.onResume()
         updateUIState(FloatingSubtitleService.isRunning)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(statusReceiver, IntentFilter(FloatingSubtitleService.ACTION_SERVICE_STATUS), Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(statusReceiver, IntentFilter(FloatingSubtitleService.ACTION_SERVICE_STATUS))
+        // Register status receiver
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(statusReceiver, IntentFilter(FloatingSubtitleService.ACTION_SERVICE_STATUS), Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(statusReceiver, IntentFilter(FloatingSubtitleService.ACTION_SERVICE_STATUS))
+            }
+        } catch (_: Exception) {}
+
+        // DEFERRED SERVICE START - critical fix for Android 12+ background start restriction
+        // After MediaProjection dialog, Activity may briefly be in background.
+        // We wait until onResume() to start the service, ensuring we're in foreground.
+        if (pendingMediaProjectionCode != null && pendingMediaProjectionData != null) {
+            val code = pendingMediaProjectionCode!!
+            val data = pendingMediaProjectionData!!
+            pendingMediaProjectionCode = null
+            pendingMediaProjectionData = null
+
+            tvStatus.text = "正在启动服务..."
+            tvStatusDetail.text = "请稍候..."
+
+            // Use Handler to ensure Activity is fully resumed before starting service
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    FloatingSubtitleService.start(this, code, data, useMicrophone = false)
+                } catch (e: Exception) {
+                    Log.e(TAG, "启动失败", e)
+                    Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    updateUIState(false)
+                }
+            }
         }
     }
 
@@ -156,10 +169,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         rgAudioSource.setOnCheckedChangeListener { _, checkedId ->
-            useMicrophone = when (checkedId) {
-                R.id.rbMicrophone -> true
-                else -> false
-            }
+            useMicrophone = (checkedId == R.id.rbMicrophone)
         }
     }
 
@@ -182,13 +192,15 @@ class MainActivity : AppCompatActivity() {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED
             ) {
-                try {
-                    FloatingSubtitleService.start(this, -1, Intent(), useMicrophone = true)
-                    tvStatus.text = "正在启动..."
-                    tvStatusDetail.text = "麦克风模式，无需录屏授权..."
-                } catch (e: Exception) {
-                    Log.e(TAG, "启动失败", e)
-                    Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                tvStatus.text = "正在启动..."
+                tvStatusDetail.text = "麦克风模式..."
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        FloatingSubtitleService.start(this, -1, Intent(), useMicrophone = true)
+                    } catch (e: Exception) {
+                        Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                        updateUIState(false)
+                    }
                 }
             } else {
                 microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -199,7 +211,6 @@ class MainActivity : AppCompatActivity() {
                     as MediaProjectionManager
                 mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
             } catch (e: Exception) {
-                Log.e(TAG, "启动录屏失败", e)
                 Toast.makeText(this, "启动录屏失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
@@ -234,11 +245,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.permission_required)
             .setMessage(R.string.overlay_permission_desc)
             .setPositiveButton(R.string.grant_permission) { _, _ ->
-                val intent = Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:$packageName")
+                overlayPermissionLauncher.launch(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
                 )
-                overlayPermissionLauncher.launch(intent)
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -247,35 +256,15 @@ class MainActivity : AppCompatActivity() {
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        if (Settings.canDrawOverlays(this)) {
-            startSubtitleService()
-        } else {
-            Toast.makeText(this, "悬浮窗权限是显示字幕的必要权限", Toast.LENGTH_LONG).show()
-        }
+        if (Settings.canDrawOverlays(this)) startSubtitleService()
+        else Toast.makeText(this, "悬浮窗权限是显示字幕的必要权限", Toast.LENGTH_LONG).show()
     }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            startSubtitleService()
-        } else {
-            Toast.makeText(this, "通知权限用于保持服务运行", Toast.LENGTH_LONG).show()
-        }
-    }
+    ) { if (it) startSubtitleService() }
 
     private val microphonePermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            startSubtitleService()
-        } else {
-            Toast.makeText(this, "麦克风权限是录制音频的必要权限", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun checkPermissionsOnLaunch() {
-        val overlayGranted = Settings.canDrawOverlays(this)
-        Log.d(TAG, "Overlay permission: $overlayGranted")
-    }
+    ) { if (it) startSubtitleService() }
 }
