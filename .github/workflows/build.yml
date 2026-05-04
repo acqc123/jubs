@@ -36,7 +36,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace --no-daemon --no-build-cache
+        run: gradle assembleDebug --stacktrace --no-daemon --no-build-cache 2>&1 | tee build.log || (cat build.log | tail -100 && exit 1)
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
