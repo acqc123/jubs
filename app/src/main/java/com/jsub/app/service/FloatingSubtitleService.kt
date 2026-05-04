@@ -13,6 +13,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.jsub.app.JSubApplication
 import com.jsub.app.MainActivity
@@ -60,6 +61,11 @@ class FloatingSubtitleService : Service() {
         @Volatile
         var isRunning = false
 
+        /**
+         * CRITICAL FIX: Use startService() instead of startForegroundService()
+         * to bypass Android 12+ background start restriction.
+         * Service will call startForeground() immediately in onStartCommand().
+         */
         fun start(context: Context, resultCode: Int, data: Intent, useMicrophone: Boolean = false) {
             val intent = Intent(context, FloatingSubtitleService::class.java).apply {
                 action = ACTION_START
@@ -67,14 +73,13 @@ class FloatingSubtitleService : Service() {
                 putExtra(EXTRA_RESULT_DATA, data)
                 putExtra(EXTRA_USE_MICROPHONE, useMicrophone)
             }
-            androidx.core.content.ContextCompat.startForegroundService(context, intent)
+            context.startService(intent)
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, FloatingSubtitleService::class.java).apply {
+            context.startService(Intent(context, FloatingSubtitleService::class.java).apply {
                 action = ACTION_STOP
-            }
-            context.startService(intent)
+            })
         }
     }
 
@@ -87,6 +92,12 @@ class FloatingSubtitleService : Service() {
     private var speechProcessor: SpeechProcessor? = null
     private var settings: AppSettings = AppSettings()
 
+    override fun onCreate() {
+        super.onCreate()
+        Log.i(TAG, "Service onCreate")
+        ensureNotificationChannel()
+    }
+
     override fun onBind(intent: Intent?): IBinder = binder
 
     inner class SubtitleBinder : Binder() {
@@ -94,90 +105,69 @@ class FloatingSubtitleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(TAG, "onStartCommand action=${intent?.action}")
+
+        // CRITICAL: Immediately promote to foreground service
+        // This works even when started via startService() (not startForegroundService())
         try {
-            when (intent?.action) {
-                ACTION_START -> handleStart(intent)
-                ACTION_STOP -> handleStop()
-            }
+            startForeground(JSubApplication.NOTIFICATION_ID, buildNotification())
         } catch (e: Exception) {
-            Log.e(TAG, "Error in onStartCommand", e)
-            sendStatusBroadcast(STATUS_ERROR, "服务启动异常: ${e.localizedMessage}")
-            try { stopForeground(true) } catch (_: Exception) {}
+            Log.e(TAG, "startForeground failed", e)
+            sendStatusBroadcast(STATUS_ERROR, "前台服务启动失败: ${e.localizedMessage}")
             stopSelf()
+            return START_NOT_STICKY
+        }
+
+        when (intent?.action) {
+            ACTION_START -> {
+                sendStatusBroadcast(STATUS_STARTING, "服务启动中...")
+                val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
+                val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(EXTRA_RESULT_DATA)
+                }
+                val useMicrophone = intent.getBooleanExtra(EXTRA_USE_MICROPHONE, false)
+
+                scope.launch {
+                    try {
+                        doFullStart(resultCode, resultData, useMicrophone)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Fatal startup error", e)
+                        sendStatusBroadcast(STATUS_ERROR, "启动失败: ${e.localizedMessage}")
+                        cleanupAndStop()
+                    }
+                }
+            }
+            ACTION_STOP -> {
+                sendStatusBroadcast(STATUS_STOPPED, "服务停止")
+                cleanupAndStop()
+            }
         }
         return START_STICKY
     }
 
-    private fun handleStart(intent: Intent) {
-        Log.i(TAG, "Starting subtitle service...")
-        sendStatusBroadcast(STATUS_STARTING, "正在启动字幕服务...")
-
-        val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
-        val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_RESULT_DATA)
-        }
-        val useMicrophone = intent.getBooleanExtra(EXTRA_USE_MICROPHONE, false)
-
-        if (!useMicrophone && (resultCode == -1 || resultData == null)) {
-            Log.e(TAG, "Invalid MediaProjection data")
-            sendStatusBroadcast(STATUS_ERROR, "录屏授权数据无效，请选择麦克风模式")
-            stopSelf()
-            return
-        }
-
-        try {
-            startForeground(JSubApplication.NOTIFICATION_ID, buildNotification())
-            sendStatusBroadcast(STATUS_FOREGROUND_OK, "前台服务已启动")
-            Log.i(TAG, "Foreground notification started")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start foreground", e)
-            sendStatusBroadcast(STATUS_ERROR, "前台服务启动失败: ${e.localizedMessage}")
-            stopSelf()
-            return
-        }
-
-        scope.launch {
-            try {
-                doFullStart(resultCode, resultData, useMicrophone)
-            } catch (e: Exception) {
-                Log.e(TAG, "Fatal error in service startup", e)
-                sendStatusBroadcast(STATUS_ERROR, "启动失败: ${e.localizedMessage}")
-                isRunning = false
-                try { stopForeground(true) } catch (_: Exception) {}
-                stopSelf()
-            }
-        }
-    }
-
     private suspend fun doFullStart(resultCode: Int, resultData: Intent?, useMicrophone: Boolean) {
         settings = loadSettings()
-        Log.i(TAG, "Settings loaded")
+        Log.i(TAG, "Settings loaded, provider=${settings.speechProvider}, translation=${settings.translationProvider}")
 
+        // Step 1: Show floating window immediately
         try {
             floatingView = FloatingSubtitleView(this@FloatingSubtitleService).apply {
                 setDisplayMode(settings.displayMode)
                 setFontSize(settings.fontSize)
                 setBgOpacity(settings.bgOpacity)
                 show()
-                updateSubtitle(
-                    SubtitleLine(
-                        japaneseText = "",
-                        chineseText = "[正在初始化...]",
-                        timestamp = System.currentTimeMillis(),
-                        isFinal = true
-                    )
-                )
             }
             sendStatusBroadcast(STATUS_FLOATING_VIEW_OK, "悬浮窗已显示")
             Log.i(TAG, "Floating view shown")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show floating view", e)
-            sendStatusBroadcast(STATUS_ERROR, "悬浮窗显示失败: ${e.localizedMessage}")
+            // Continue even if floating view fails - at least notification shows
         }
 
+        // Step 2: Start audio capture
         val capturer: AudioCapturer = if (useMicrophone) {
             Log.i(TAG, "Using MicrophoneCapturer")
             MicrophoneCapturer()
@@ -187,8 +177,8 @@ class FloatingSubtitleService : Service() {
             mediaProjection = projectionManager.getMediaProjection(resultCode, resultData!!)
 
             if (mediaProjection == null) {
-                Log.w(TAG, "MediaProjection is null, falling back to microphone")
-                sendStatusBroadcast(STATUS_AUDIO_FALLBACK, "录屏授权失败，自动切换到麦克风")
+                Log.w(TAG, "MediaProjection null, falling back to microphone")
+                sendStatusBroadcast(STATUS_AUDIO_FALLBACK, "录屏授权无效，切换到麦克风")
                 MicrophoneCapturer()
             } else {
                 SystemAudioCapturer()
@@ -218,16 +208,11 @@ class FloatingSubtitleService : Service() {
             audioCapturer = micCapturer
             micCapturer.startCapture()
             sendStatusBroadcast(STATUS_AUDIO_OK, "已切换到麦克风模式")
-            Log.i(TAG, "Switched to MicrophoneCapturer")
         }
 
+        // Step 3: Create speech processor (in background thread)
         floatingView?.updateSubtitle(
-            SubtitleLine(
-                japaneseText = "",
-                chineseText = "[正在加载语音识别...]",
-                timestamp = System.currentTimeMillis(),
-                isFinal = true
-            )
+            SubtitleLine("", "[正在加载语音识别引擎...]", System.currentTimeMillis(), true)
         )
 
         val processor = withContext(Dispatchers.IO) {
@@ -252,7 +237,7 @@ class FloatingSubtitleService : Service() {
 
                 StreamingSpeechProcessor(engine, translationApi)
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to create speech processor", e)
+                Log.e(TAG, "Engine creation failed", e)
                 null
             }
         }
@@ -264,6 +249,7 @@ class FloatingSubtitleService : Service() {
 
         speechProcessor = processor
 
+        // Step 4: Start processing
         try {
             val flow = audioCapturer?.audioBufferFlow
             if (flow != null) {
@@ -273,11 +259,12 @@ class FloatingSubtitleService : Service() {
                 throw IllegalStateException("Audio capturer flow is null")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to start processing", e)
+            Log.e(TAG, "Processing start failed", e)
             sendStatusBroadcast(STATUS_ERROR, "语音识别启动失败: ${e.localizedMessage}")
             return
         }
 
+        // Step 5: Collect results
         scope.launch {
             processor.subtitleFlow.collectLatest { subtitle ->
                 updateSubtitle(subtitle)
@@ -286,33 +273,30 @@ class FloatingSubtitleService : Service() {
 
         isRunning = true
         sendStatusBroadcast(STATUS_RUNNING, "字幕服务运行中")
-        Log.i(TAG, "Service started successfully")
+        Log.i(TAG, "Service fully started")
     }
 
-    private fun handleStop() {
-        Log.i(TAG, "Stopping subtitle service...")
-        sendStatusBroadcast(STATUS_STOPPED, "字幕服务已停止")
-
+    private fun cleanupAndStop() {
         scope.cancel()
 
-        floatingView?.hide()
+        try { floatingView?.hide() } catch (_: Exception) {}
         floatingView = null
 
-        speechProcessor?.stopProcessing()
+        try { speechProcessor?.stopProcessing() } catch (_: Exception) {}
         speechProcessor = null
 
-        audioCapturer?.stopCapture()
-        audioCapturer?.release()
+        try {
+            audioCapturer?.stopCapture()
+            audioCapturer?.release()
+        } catch (_: Exception) {}
         audioCapturer = null
 
-        mediaProjection?.stop()
+        try { mediaProjection?.stop() } catch (_: Exception) {}
         mediaProjection = null
 
         isRunning = false
-        stopForeground(true)
+        try { stopForeground(true) } catch (_: Exception) {}
         stopSelf()
-
-        Log.i(TAG, "Subtitle service stopped")
     }
 
     private fun updateSubtitle(subtitle: SubtitleLine) {
@@ -323,7 +307,7 @@ class FloatingSubtitleService : Service() {
         return try {
             com.jsub.app.data.SettingsRepository(this).loadSettings()
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to load settings, using defaults", e)
+            Log.w(TAG, "Settings load failed, using defaults", e)
             AppSettings()
         }
     }
@@ -339,7 +323,7 @@ class FloatingSubtitleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        handleStop()
+        cleanupAndStop()
     }
 
     private fun sendStatusBroadcast(status: String, message: String) {
@@ -349,13 +333,11 @@ class FloatingSubtitleService : Service() {
                 putExtra(EXTRA_STATUS_MESSAGE, message)
             })
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to send status broadcast", e)
+            Log.w(TAG, "Broadcast failed", e)
         }
     }
 
     private fun buildNotification(): Notification {
-        ensureNotificationChannel()
-
         val pendingIntent = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
