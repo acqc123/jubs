@@ -13,7 +13,7 @@ import com.jsub.app.model.SpeechProvider
  * ### 支持的引擎
  * | 提供商 | 引擎类 | 说明 |
  * |--------|--------|------|
- * | [SpeechProvider.WHISPER] | [WhisperEngine] | OpenAI Whisper API |
+ * | [SpeechProvider.SENSEVOICE_LOCAL] | [SenseVoiceEngine] | 阿里SenseVoice本地 |
  * | [SpeechProvider.SENSEVOICE_LOCAL] | [SenseVoiceEngine] | 本地SenseVoice ONNX模型 |
  * | [SpeechProvider.ANIME_WHISPER] | [AnimeWhisperEngine] | HuggingFace Anime-Whisper API |
  *
@@ -126,8 +126,8 @@ object EngineFactory {
         return listOf(
             EngineInfo(
                 provider = SpeechProvider.WHISPER,
-                name = "Whisper (OpenAI)",
-                description = "OpenAI Whisper API，通用语音识别",
+                name = "SenseVoice (本地)",
+                description = "阿里SenseVoice本地模型，日语离线识别",
                 requiresNetwork = true,
                 requiresModelDownload = false
             ),
