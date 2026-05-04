@@ -38,6 +38,11 @@ jobs:
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace --no-daemon --no-build-cache 2>&1 | tee build.log || (cat build.log | tail -100 && exit 1)
 
+      - name: Verify APK exists
+        run: |
+          ls -la app/build/outputs/apk/debug/
+          find . -name "*.apk" -type f
+
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
