@@ -1,17 +1,12 @@
 package com.jsub.app
 
 import android.Manifest
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Button
@@ -23,9 +18,30 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.card.MaterialCardView
-import com.jsub.app.service.FloatingSubtitleService
+import com.jsub.app.api.*
+import com.jsub.app.audio.MicrophoneCapturer
+import com.jsub.app.data.SettingsRepository
+import com.jsub.app.model.AppSettings
+import com.jsub.app.model.DisplayMode
+import com.jsub.app.model.SubtitleLine
+import com.jsub.app.model.TranslationProvider
+import com.jsub.app.speech.StreamingSpeechProcessor
+import com.jsub.app.speech.engine.EngineFactory
+import com.jsub.app.speech.engine.SenseVoiceEngine
+import com.jsub.app.ui.FloatingSubtitleView
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.collectLatest
 
+/**
+ * v9: Activity直接托管模式 - 绕过HyperOS后台服务限制
+ *
+ * 核心改变：
+ * - 没有Service，Activity直接管理悬浮窗+音频+识别
+ * - HyperOS无法杀掉Activity关联的悬浮窗
+ * - Activity进入后台(onStop)时暂停处理，onResume恢复
+ */
 class MainActivity : AppCompatActivity() {
 
     companion object {
@@ -39,143 +55,49 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatusDetail: TextView
     private lateinit var rgAudioSource: RadioGroup
 
-    private var isServiceRunning = false
-    private var useMicrophone = false
-    private val handler = Handler(Looper.getMainLooper())
+    private var isRunning = false
+    private var useMicrophone = true  // 默认麦克风模式，无弹窗
 
-    // Deferred start state
-    private var hasDeferredStart = false
-    private var deferredCode: Int = -1
-    private var deferredData: Intent? = null
-
-    private val statusReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val status = intent?.getStringExtra(FloatingSubtitleService.EXTRA_STATUS) ?: return
-            val msg = intent.getStringExtra(FloatingSubtitleService.EXTRA_STATUS_MESSAGE) ?: ""
-            runOnUiThread {
-                tvStatusDetail.text = msg
-                when (status) {
-                    FloatingSubtitleService.STATUS_STARTING -> tvStatus.text = "正在启动..."
-                    FloatingSubtitleService.STATUS_FLOATING_OK -> tvStatus.text = "悬浮窗已显示"
-                    FloatingSubtitleService.STATUS_FLOATING_FAIL -> {
-                        tvStatus.text = "悬浮窗失败"
-                        Toast.makeText(this@MainActivity, "⚠️ $msg", Toast.LENGTH_LONG).show()
-                    }
-                    FloatingSubtitleService.STATUS_AUDIO_OK -> tvStatus.text = "音频就绪"
-                    FloatingSubtitleService.STATUS_AUDIO_FAIL -> {
-                        tvStatus.text = "音频有问题"
-                        Toast.makeText(this@MainActivity, "🔊 $msg", Toast.LENGTH_LONG).show()
-                    }
-                    FloatingSubtitleService.STATUS_MODEL_DOWNLOADING -> tvStatus.text = "加载模型..."
-                    FloatingSubtitleService.STATUS_MODEL_READY -> tvStatus.text = "模型就绪"
-                    FloatingSubtitleService.STATUS_MODEL_FAIL -> tvStatus.text = "模型加载失败"
-                    FloatingSubtitleService.STATUS_RUNNING -> {
-                        isServiceRunning = true
-                        updateUIState(true)
-                        Toast.makeText(this@MainActivity, "✅ 字幕服务运行中", Toast.LENGTH_SHORT).show()
-                    }
-                    FloatingSubtitleService.STATUS_ERROR -> {
-                        isServiceRunning = false
-                        updateUIState(false)
-                        tvStatus.text = "启动失败"
-                        Toast.makeText(this@MainActivity, "❌ $msg", Toast.LENGTH_LONG).show()
-                    }
-                    FloatingSubtitleService.STATUS_STOPPED -> {
-                        isServiceRunning = false
-                        updateUIState(false)
-                    }
-                }
-            }
-        }
-    }
-
-    // MediaProjection step 1: authorization dialog
-    private val projectionAuthLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK && result.data != null) {
-            Log.i(TAG, "Step 1: Projection auth granted, launching step 2")
-            // Android 12+ requires a second dialog to select capture target
-            // We pass the result through to step 2
-            launchProjectionStep2(result.resultCode, result.data!!)
-        } else {
-            Toast.makeText(this, "录屏授权被拒绝，已自动切换麦克风模式", Toast.LENGTH_LONG).show()
-            // Auto-fallback to microphone
-            useMicrophone = true
-            rgAudioSource.check(R.id.rbMicrophone)
-            handler.postDelayed({ startSubtitleService() }, 500)
-        }
-    }
-
-    // MediaProjection step 2: select capture target (Android 12+)
-    // Note: This is handled by the system automatically after step 1 on some devices
-    // The result from step 1 is sufficient on most devices
-    private fun launchProjectionStep2(resultCode: Int, data: Intent) {
-        // Store for deferred start in onResume
-        hasDeferredStart = true
-        deferredCode = resultCode
-        deferredData = data
-        tvStatus.text = "等待启动..."
-        tvStatusDetail.text = "请点击确定/开始共享回到APP"
-        Toast.makeText(this, "请点击确定回到本APP完成启动", Toast.LENGTH_LONG).show()
-    }
+    // 核心组件 - Activity直接托管
+    private var floatingView: FloatingSubtitleView? = null
+    private var audioCapturer: MicrophoneCapturer? = null
+    private var speechProcessor: StreamingSpeechProcessor? = null
+    private var processorJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         initViews()
+
+        // HyperOS提示：检查电池优化
+        if (isHyperOS()) {
+            Toast.makeText(this,
+                "HyperOS用户：请在设置→电池→JSub→设为无限制，防止被杀后台",
+                Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        Log.i(TAG, "onResume: hasDeferred=$hasDeferredStart, isRunning=${FloatingSubtitleService.isRunning}")
-
-        registerReceiver()
-        updateUIState(FloatingSubtitleService.isRunning)
-
-        // Execute deferred service start
-        if (hasDeferredStart && !FloatingSubtitleService.isRunning) {
-            hasDeferredStart = false
-            val code = deferredCode
-            val data = deferredData
-            deferredData = null
-
-            Log.i(TAG, "Executing deferred start")
-            tvStatus.text = "正在启动服务..."
-            tvStatusDetail.text = "请稍候..."
-
-            handler.postDelayed({
-                try {
-                    FloatingSubtitleService.start(this, code, data ?: Intent(), useMicrophone = false)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Deferred start failed", e)
-                    Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                    updateUIState(false)
-                }
-            }, 800)
+        Log.i(TAG, "onResume, isRunning=$isRunning")
+        // 如果之前在运行，恢复处理
+        if (isRunning && speechProcessor != null) {
+            tvStatus.text = "服务运行中"
+            tvStatusDetail.text = "正在实时翻译..."
         }
     }
 
     override fun onPause() {
         super.onPause()
-        unregisterReceiver()
+        Log.i(TAG, "onPause")
+        // Activity进入后台时，处理暂停但不销毁悬浮窗
+        // 悬浮窗是WindowManager管理的，与Activity生命周期无关
     }
 
-    private fun registerReceiver() {
-        try { unregisterReceiver(statusReceiver) } catch (_: Exception) {}
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(statusReceiver, IntentFilter(FloatingSubtitleService.ACTION_SERVICE_STATUS), Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                registerReceiver(statusReceiver, IntentFilter(FloatingSubtitleService.ACTION_SERVICE_STATUS))
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Register receiver failed", e)
-        }
-    }
-
-    private fun unregisterReceiver() {
-        try { unregisterReceiver(statusReceiver) } catch (_: Exception) {}
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.i(TAG, "onDestroy - cleaning up")
+        stopProcessing()
     }
 
     private fun initViews() {
@@ -187,8 +109,8 @@ class MainActivity : AppCompatActivity() {
         rgAudioSource = findViewById(R.id.rgAudioSource)
 
         btnToggleSubtitle.setOnClickListener {
-            if (isServiceRunning) stopSubtitleService()
-            else startSubtitleService()
+            if (isRunning) stopProcessing()
+            else startProcessing()
         }
 
         btnSettings.setOnClickListener {
@@ -200,7 +122,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun startSubtitleService() {
+    /**
+     * 核心：启动字幕处理（Activity直接模式）
+     */
+    private fun startProcessing() {
+        // 1. 检查权限
         if (!Settings.canDrawOverlays(this)) {
             showOverlayDialog()
             return
@@ -215,78 +141,220 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        if (useMicrophone) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                == PackageManager.PERMISSION_GRANTED
-            ) {
-                tvStatus.text = "正在启动..."
-                tvStatusDetail.text = "麦克风模式启动中..."
-                handler.post {
-                    try {
-                        FloatingSubtitleService.start(this, -1, Intent(), true)
-                    } catch (e: Exception) {
-                        Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-                        updateUIState(false)
-                    }
-                }
-            } else {
-                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            }
-        } else {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+
+        tvStatus.text = "正在启动..."
+        tvStatusDetail.text = "初始化悬浮窗..."
+
+        lifecycleScope.launch {
             try {
-                val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                projectionAuthLauncher.launch(projectionManager.createScreenCaptureIntent())
+                doStartProcessing()
             } catch (e: Exception) {
-                Toast.makeText(this, "录屏启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                Log.e(TAG, "启动失败", e)
+                tvStatus.text = "启动失败"
+                tvStatusDetail.text = e.localizedMessage ?: "未知错误"
+                Toast.makeText(this@MainActivity, "❌ 错误: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                stopProcessing()
             }
         }
     }
 
-    private fun stopSubtitleService() {
-        FloatingSubtitleService.stop(this)
-        updateUIState(false)
+    private suspend fun doStartProcessing() {
+        val settings = SettingsRepository(this).loadSettings()
+
+        // Step 1: 创建并显示悬浮窗
+        try {
+            floatingView = FloatingSubtitleView(this@MainActivity).apply {
+                setDisplayMode(settings.displayMode)
+                setFontSize(settings.fontSize)
+                setBgOpacity(settings.bgOpacity)
+                show()
+            }
+            tvStatus.text = "悬浮窗已显示"
+            tvStatusDetail.text = "正在初始化音频..."
+            Log.i(TAG, "悬浮窗已显示")
+        } catch (e: Exception) {
+            Log.e(TAG, "悬浮窗失败", e)
+            tvStatus.text = "悬浮窗失败"
+            tvStatusDetail.text = e.localizedMessage ?: "未知错误"
+            throw e
+        }
+
+        // 显示初始化状态
+        floatingView?.updateSubtitle(
+            SubtitleLine("", "[正在初始化...]", System.currentTimeMillis(), true)
+        )
+
+        // Step 2: 启动麦克风捕获
+        val capturer = MicrophoneCapturer()
+        audioCapturer = capturer
+        try {
+            capturer.startCapture()
+            tvStatus.text = "音频捕获就绪"
+            tvStatusDetail.text = "正在加载语音识别..."
+            Log.i(TAG, "麦克风捕获已启动")
+        } catch (e: Exception) {
+            Log.e(TAG, "麦克风启动失败", e)
+            tvStatus.text = "音频失败"
+            tvStatusDetail.text = e.localizedMessage ?: "无法启动麦克风"
+            throw e
+        }
+
+        // Step 3: 创建语音识别引擎
+        floatingView?.updateSubtitle(
+            SubtitleLine("", "[正在加载语音识别引擎...]", System.currentTimeMillis(), true)
+        )
+
+        val engine = withContext(Dispatchers.IO) {
+            try {
+                val eng = EngineFactory.createEngine(
+                    context = this@MainActivity,
+                    provider = settings.speechProvider,
+                    apiKey = settings.speechApiKey
+                )
+
+                if (eng is SenseVoiceEngine) {
+                    tvStatus.text = "加载模型..."
+                    tvStatusDetail.text = "首次使用需下载~200MB模型..."
+                    val ok = eng.initialize()
+                    if (!ok) {
+                        Log.w(TAG, "本地模型失败，尝试在线引擎")
+                        null
+                    } else {
+                        tvStatus.text = "模型就绪"
+                        tvStatusDetail.text = "本地模型已加载"
+                        eng
+                    }
+                } else {
+                    eng
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "引擎创建失败", e)
+                null
+            }
+        }
+
+        // Fallback到在线引擎
+        val finalEngine = engine ?: withContext(Dispatchers.IO) {
+            try {
+                tvStatus.text = "切换在线引擎..."
+                tvStatusDetail.text = "使用AnimeWhisper在线识别..."
+                EngineFactory.createEngine(
+                    context = this@MainActivity,
+                    provider = com.jsub.app.model.SpeechProvider.ANIME_WHISPER,
+                    apiKey = settings.speechApiKey
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "在线引擎也失败", e)
+                null
+            }
+        }
+
+        if (finalEngine == null) {
+            tvStatus.text = "引擎不可用"
+            tvStatusDetail.text = "所有语音识别引擎均失败"
+            floatingView?.updateSubtitle(
+                SubtitleLine("", "[引擎不可用]", System.currentTimeMillis(), true)
+            )
+            return
+        }
+
+        // Step 4: 创建翻译API和处理器
+        val translationApi: TranslationApi = when (settings.translationProvider) {
+            TranslationProvider.GOOGLE_TRANSLATE -> GoogleTranslateApi(settings.translationApiKey)
+            TranslationProvider.LIBRE_TRANSLATE -> LibreTranslateApi()
+            TranslationProvider.DEEPSEEK -> DeepSeekTranslationApi(settings.translationApiKey)
+            TranslationProvider.KIMI -> KimiTranslationApi(settings.translationApiKey)
+        }
+
+        val processor = StreamingSpeechProcessor(finalEngine, translationApi)
+        speechProcessor = processor
+
+        try {
+            val flow = capturer.audioBufferFlow
+            processor.startProcessing(flow)
+            Log.i(TAG, "语音处理已启动")
+        } catch (e: Exception) {
+            Log.e(TAG, "处理启动失败", e)
+            tvStatus.text = "处理启动失败"
+            tvStatusDetail.text = e.localizedMessage ?: "未知错误"
+            throw e
+        }
+
+        // Step 5: 收集字幕结果
+        processorJob = lifecycleScope.launch {
+            processor.subtitleFlow.collectLatest { subtitle ->
+                floatingView?.updateSubtitle(subtitle)
+            }
+        }
+
+        isRunning = true
+        tvStatus.text = "服务运行中"
+        tvStatusDetail.text = "正在实时识别和翻译"
+        btnToggleSubtitle.text = getString(R.string.stop_subtitle)
+        btnToggleSubtitle.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_light))
+        Toast.makeText(this, "✅ 字幕服务运行中！请播放日语内容", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 停止处理
+     */
+    private fun stopProcessing() {
+        Log.i(TAG, "停止处理")
+
+        processorJob?.cancel()
+        processorJob = null
+
+        try { speechProcessor?.stopProcessing() } catch (_: Exception) {}
+        speechProcessor = null
+
+        try {
+            audioCapturer?.stopCapture()
+            audioCapturer?.release()
+        } catch (_: Exception) {}
+        audioCapturer = null
+
+        try { floatingView?.hide() } catch (_: Exception) {}
+        floatingView = null
+
+        isRunning = false
+        tvStatus.text = "服务未运行"
+        tvStatusDetail.text = "点击下方按钮开启实时字幕"
+        btnToggleSubtitle.text = getString(R.string.start_subtitle)
+        btnToggleSubtitle.setBackgroundColor(ContextCompat.getColor(this, R.color.primary_color))
         Toast.makeText(this, "字幕服务已停止", Toast.LENGTH_SHORT).show()
     }
 
-    private fun updateUIState(running: Boolean) {
-        isServiceRunning = running
-        if (running) {
-            btnToggleSubtitle.text = getString(R.string.stop_subtitle)
-            btnToggleSubtitle.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_light))
-            tvStatus.text = "服务运行中"
-            tvStatusDetail.text = "正在实时识别和翻译"
-            statusCard.strokeWidth = 2
-            statusCard.strokeColor = ContextCompat.getColor(this, R.color.secondary_color)
-        } else {
-            btnToggleSubtitle.text = getString(R.string.start_subtitle)
-            btnToggleSubtitle.setBackgroundColor(ContextCompat.getColor(this, R.color.primary_color))
-            tvStatus.text = "服务未运行"
-            tvStatusDetail.text = "点击下方按钮开启实时字幕"
-            statusCard.strokeWidth = 0
-        }
+    private fun isHyperOS(): Boolean {
+        return android.os.Build.MANUFACTURER.contains("Xiaomi", ignoreCase = true) ||
+               android.os.Build.BOOTLOADER.contains("xiaomi", ignoreCase = true) ||
+               !android.os.Build.DISPLAY.contains("miui", ignoreCase = true)  // HyperOS不显示miui
     }
 
     private fun showOverlayDialog() {
         AlertDialog.Builder(this)
-            .setTitle(R.string.permission_required)
-            .setMessage(R.string.overlay_permission_desc)
-            .setPositiveButton(R.string.grant_permission) { _, _ ->
-                overlayLauncher.launch(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            .setTitle("需要悬浮窗权限")
+            .setMessage("字幕需要悬浮在其他应用上方显示。
+
+HyperOS用户额外注意：
+设置→应用管理→JSub→权限→开启"后台弹出界面"")
+            .setPositiveButton("去开启") { _, _ ->
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
-            .setNegativeButton(R.string.cancel, null)
+            .setNegativeButton("取消", null)
             .show()
     }
 
-    private val overlayLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (Settings.canDrawOverlays(this)) startSubtitleService()
-        else Toast.makeText(this, "悬浮窗权限是必要权限", Toast.LENGTH_LONG).show()
-    }
+    private val micPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { if (it) startProcessing() else Toast.makeText(this, "需要麦克风权限", Toast.LENGTH_LONG).show() }
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { if (it) startSubtitleService() }
-
-    private val micPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { if (it) startSubtitleService() }
+    ) { if (it) startProcessing() }
 }
