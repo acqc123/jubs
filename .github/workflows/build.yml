@@ -30,11 +30,15 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          set -o pipefail
+          set -eo pipefail
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace --no-daemon --no-build-cache 2>&1 | tee build.log
-          echo "--- APK files ---"
-          ls -la app/build/outputs/apk/debug/
+          echo "=== APK ==="
+          ls -la app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Show build errors
+        if: failure()
+        run: cat build.log | grep -E "e:|error:|FAILED|Exception|Compilation" | tail -30
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
