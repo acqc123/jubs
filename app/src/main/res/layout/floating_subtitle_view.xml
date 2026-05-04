@@ -8,6 +8,17 @@
     android:background="@drawable/bg_subtitle_white"
     android:padding="12dp">
 
+    <!-- Close button (top-right corner) -->
+    <ImageButton
+        android:id="@+id/btnClose"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="top|end"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:contentDescription="关闭字幕"
+        android:visibility="gone" />
+
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
