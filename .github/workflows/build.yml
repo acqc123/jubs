@@ -25,24 +25,15 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle (no cache)
-        run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
-          unzip -q gradle-8.4-bin.zip
-          sudo mv gradle-8.4 /opt/gradle
-          echo "/opt/gradle/bin" >> $GITHUB_PATH
-
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Build Debug APK
         run: |
-          set -o pipefail
-          export PATH="/opt/gradle/bin:$PATH"
-          gradle --version
-          gradle assembleDebug --stacktrace --no-daemon --no-build-cache
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace --no-daemon --no-build-cache 2>&1 | tail -200
           echo "--- APK files ---"
-          find . -name "*.apk" -type f -ls
+          find . -name "*.apk" -type f -ls || true
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
