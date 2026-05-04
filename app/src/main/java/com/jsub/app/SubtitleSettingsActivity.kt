@@ -36,7 +36,6 @@ class SubtitleSettingsActivity : AppCompatActivity() {
     private lateinit var sliderFontSize: SeekBar
     private lateinit var sliderOpacity: SeekBar
     private lateinit var tvApiKeyHint: TextView
-    private lateinit var tvSpeechKeyHint: TextView
     private lateinit var btnSave: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
