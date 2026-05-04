@@ -1,13 +1,10 @@
 package com.jsub.app.audio
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Build
 import android.util.Log
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
@@ -20,11 +17,6 @@ import kotlinx.coroutines.flow.*
  * - 不需要MediaProjection
  * - 直接录制环境音（包括扬声器播放的声音）
  * - 兼容所有Android版本（API 16+）
- *
- * 适用场景：
- * - 用户不想看到"共享屏幕"弹窗
- * - SystemAudioCapturer在设备上不工作
- * - 戴耳机看视频（如果耳机漏音，麦克风能捕获）
  */
 class MicrophoneCapturer : AudioCapturer {
 
@@ -41,7 +33,8 @@ class MicrophoneCapturer : AudioCapturer {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val _audioBufferFlow = MutableSharedFlow<ByteArray>(
-        extra = 1,
+        replay = 0,
+        extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     override val audioBufferFlow: SharedFlow<ByteArray> = _audioBufferFlow.asSharedFlow()
@@ -55,7 +48,6 @@ class MicrophoneCapturer : AudioCapturer {
         )
 
         val audioSource = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            // Android 7+ 使用 CAMCORDER 源，音质更好
             MediaRecorder.AudioSource.CAMCORDER
         } else {
             MediaRecorder.AudioSource.MIC
