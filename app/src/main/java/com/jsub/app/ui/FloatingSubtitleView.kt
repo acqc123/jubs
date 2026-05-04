@@ -17,30 +17,22 @@ import com.jsub.app.R
 import com.jsub.app.model.DisplayMode
 import com.jsub.app.model.SubtitleLine
 
-/**
- * 悬浮字幕视图
- *
- * 系统级悬浮窗，显示实时翻译字幕。
- * 支持拖动、调整样式、显示模式切换。
- */
 class FloatingSubtitleView(context: Context) {
 
     companion object {
         private const val TAG = "FloatingSubtitleView"
     }
 
-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-    private val layoutInflater = LayoutInflater.from(context)
+    private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val inflater = LayoutInflater.from(context)
 
     private var rootView: View? = null
-    private var tvJapanese: TextView? = null
     private var tvChinese: TextView? = null
+    private var tvJapanese: TextView? = null
     private var progressBar: ProgressBar? = null
-    private var controlPanel: View? = null
-
-    private var displayMode = DisplayMode.BILINGUAL
     private var isShowing = false
 
+    // Drag state
     private var initialX = 0
     private var initialY = 0
     private var touchStartX = 0f
@@ -51,17 +43,17 @@ class FloatingSubtitleView(context: Context) {
         type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
+            @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
         }
         format = PixelFormat.TRANSLUCENT
         flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         width = WindowManager.LayoutParams.WRAP_CONTENT
         height = WindowManager.LayoutParams.WRAP_CONTENT
         x = 0
-        y = 200  // 200px from bottom
+        y = 180
     }
 
     init {
@@ -69,94 +61,84 @@ class FloatingSubtitleView(context: Context) {
     }
 
     private fun createView() {
-        rootView = layoutInflater.inflate(R.layout.floating_subtitle_view, null).apply {
-            tvJapanese = findViewById(R.id.tvJapanese)
+        rootView = inflater.inflate(R.layout.floating_subtitle_view, null).apply {
             tvChinese = findViewById(R.id.tvChinese)
+            tvJapanese = findViewById(R.id.tvJapanese)
             progressBar = findViewById(R.id.progressIndicator)
-            controlPanel = findViewById(R.id.controlPanel)
 
             setOnTouchListener { _, event ->
                 handleTouch(event)
                 true
             }
-
-            findViewById<View>(R.id.btnClose)?.setOnClickListener {
-                hide()
-            }
-
-            findViewById<View>(R.id.btnMinimize)?.setOnClickListener {
-                toggleMinimize()
-            }
         }
     }
 
+    /**
+     * Show floating window. Throws on failure so caller knows.
+     */
+    @Throws(Exception::class)
     fun show() {
         if (isShowing) return
+        val view = rootView ?: throw IllegalStateException("rootView is null")
         try {
-            rootView?.let {
-                windowManager.addView(it, layoutParams)
-                isShowing = true
-                Log.d(TAG, "Floating view shown")
-            }
+            wm.addView(view, layoutParams)
+            isShowing = true
+            Log.i(TAG, "Floating view ADDED to WindowManager")
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "View already added?", e)
+            throw e
+        } catch (e: WindowManager.BadTokenException) {
+            Log.e(TAG, "BadToken - overlay permission denied?", e)
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to show floating view", e)
-            throw e  // Let caller know
+            Log.e(TAG, "Failed to add view", e)
+            throw e
         }
     }
 
     fun hide() {
         if (!isShowing) return
         try {
-            rootView?.let {
-                windowManager.removeView(it)
-                isShowing = false
-                Log.d(TAG, "Floating view hidden")
-            }
+            rootView?.let { wm.removeView(it) }
+            isShowing = false
+            Log.i(TAG, "Floating view REMOVED")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to hide floating view", e)
+            Log.w(TAG, "Error hiding view", e)
         }
     }
 
+    fun isShowing(): Boolean = isShowing
+
     fun updateSubtitle(subtitle: SubtitleLine) {
-        tvJapanese?.text = subtitle.japaneseText
         tvChinese?.text = subtitle.chineseText
+        tvJapanese?.text = subtitle.japaneseText
+        tvJapanese?.visibility = if (subtitle.japaneseText.isEmpty()) View.GONE else View.VISIBLE
         progressBar?.visibility = if (subtitle.isFinal) View.GONE else View.VISIBLE
-        updateVisibilityByMode()
     }
 
     fun setDisplayMode(mode: DisplayMode) {
-        this.displayMode = mode
-        updateVisibilityByMode()
+        when (mode) {
+            DisplayMode.BILINGUAL -> {
+                tvJapanese?.visibility = View.VISIBLE
+            }
+            DisplayMode.CHINESE_ONLY -> {
+                tvJapanese?.visibility = View.GONE
+            }
+            DisplayMode.JAPANESE_ONLY -> {
+                tvJapanese?.visibility = View.VISIBLE
+            }
+        }
     }
 
     fun setFontSize(sizeSp: Int) {
-        tvJapanese?.textSize = sizeSp - 1f
         tvChinese?.textSize = sizeSp.toFloat()
+        tvJapanese?.textSize = (sizeSp - 2).toFloat()
     }
 
     fun setBgOpacity(percent: Int) {
         val alpha = (255 * percent / 100).coerceIn(0, 255)
         rootView?.findViewById<FrameLayout>(R.id.subtitleContainer)?.let { container ->
             (container.background as? GradientDrawable)?.alpha = alpha
-        }
-    }
-
-    fun isShowing(): Boolean = isShowing
-
-    private fun updateVisibilityByMode() {
-        when (displayMode) {
-            DisplayMode.BILINGUAL -> {
-                tvJapanese?.visibility = View.VISIBLE
-                tvChinese?.visibility = View.VISIBLE
-            }
-            DisplayMode.CHINESE_ONLY -> {
-                tvJapanese?.visibility = View.GONE
-                tvChinese?.visibility = View.VISIBLE
-            }
-            DisplayMode.JAPANESE_ONLY -> {
-                tvJapanese?.visibility = View.VISIBLE
-                tvChinese?.visibility = View.GONE
-            }
         }
     }
 
@@ -172,30 +154,14 @@ class FloatingSubtitleView(context: Context) {
             MotionEvent.ACTION_MOVE -> {
                 val dx = (event.rawX - touchStartX).toInt()
                 val dy = (event.rawY - touchStartY).toInt()
-                if (kotlin.math.abs(dx) > 15 || kotlin.math.abs(dy) > 15) {
-                    isDragging = true
-                }
+                if (kotlin.math.abs(dx) > 15 || kotlin.math.abs(dy) > 15) isDragging = true
                 if (isDragging) {
                     layoutParams.x = initialX + dx
-                    layoutParams.y = initialY - dy  // inverted for bottom gravity
-                    rootView?.let {
-                        windowManager.updateViewLayout(it, layoutParams)
-                    }
+                    layoutParams.y = initialY - dy
+                    rootView?.let { wm.updateViewLayout(it, layoutParams) }
                 }
             }
-            MotionEvent.ACTION_UP -> {
-                if (!isDragging) {
-                    toggleControlPanel()
-                }
-            }
+            MotionEvent.ACTION_UP -> {}
         }
-    }
-
-    private fun toggleControlPanel() {
-        controlPanel?.visibility = if (controlPanel?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-    }
-
-    private fun toggleMinimize() {
-        tvJapanese?.visibility = if (tvJapanese?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 }
