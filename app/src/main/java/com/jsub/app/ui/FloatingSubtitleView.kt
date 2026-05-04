@@ -11,6 +11,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
 import com.jsub.app.R
@@ -30,6 +31,7 @@ class FloatingSubtitleView(context: Context) {
     private var tvChinese: TextView? = null
     private var tvJapanese: TextView? = null
     private var progressBar: ProgressBar? = null
+    private var btnClose: ImageButton? = null
     private var isShowing = false
 
     // Drag state
@@ -38,6 +40,7 @@ class FloatingSubtitleView(context: Context) {
     private var touchStartX = 0f
     private var touchStartY = 0f
     private var isDragging = false
+    private var dragStartTime = 0L
 
     private val layoutParams = WindowManager.LayoutParams().apply {
         type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -65,6 +68,11 @@ class FloatingSubtitleView(context: Context) {
             tvChinese = findViewById(R.id.tvChinese)
             tvJapanese = findViewById(R.id.tvJapanese)
             progressBar = findViewById(R.id.progressIndicator)
+            btnClose = findViewById(R.id.btnClose)
+
+            btnClose?.setOnClickListener {
+                hide()
+            }
 
             setOnTouchListener { _, event ->
                 handleTouch(event)
@@ -73,9 +81,6 @@ class FloatingSubtitleView(context: Context) {
         }
     }
 
-    /**
-     * Show floating window. Throws on failure so caller knows.
-     */
     @Throws(Exception::class)
     fun show() {
         if (isShowing) return
@@ -83,7 +88,7 @@ class FloatingSubtitleView(context: Context) {
         try {
             wm.addView(view, layoutParams)
             isShowing = true
-            Log.i(TAG, "Floating view ADDED to WindowManager")
+            Log.i(TAG, "Floating view ADDED")
         } catch (e: IllegalStateException) {
             Log.e(TAG, "View already added?", e)
             throw e
@@ -114,6 +119,11 @@ class FloatingSubtitleView(context: Context) {
         tvJapanese?.text = subtitle.japaneseText
         tvJapanese?.visibility = if (subtitle.japaneseText.isEmpty()) View.GONE else View.VISIBLE
         progressBar?.visibility = if (subtitle.isFinal) View.GONE else View.VISIBLE
+
+        // Show close button after first real subtitle
+        if (subtitle.chineseText.isNotBlank() && !subtitle.chineseText.startsWith("[")) {
+            btnClose?.visibility = View.VISIBLE
+        }
     }
 
     fun setDisplayMode(mode: DisplayMode) {
@@ -150,6 +160,8 @@ class FloatingSubtitleView(context: Context) {
                 touchStartX = event.rawX
                 touchStartY = event.rawY
                 isDragging = false
+                dragStartTime = System.currentTimeMillis()
+                btnClose?.visibility = View.VISIBLE // Show close button on touch
             }
             MotionEvent.ACTION_MOVE -> {
                 val dx = (event.rawX - touchStartX).toInt()
@@ -161,7 +173,13 @@ class FloatingSubtitleView(context: Context) {
                     rootView?.let { wm.updateViewLayout(it, layoutParams) }
                 }
             }
-            MotionEvent.ACTION_UP -> {}
+            MotionEvent.ACTION_UP -> {
+                val duration = System.currentTimeMillis() - dragStartTime
+                if (!isDragging && duration < 200) {
+                    // Quick tap: toggle close button visibility
+                    btnClose?.visibility = if (btnClose?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                }
+            }
         }
     }
 }
