@@ -6,6 +6,7 @@ import android.os.Build
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.ProgressBar
@@ -14,13 +15,11 @@ import com.jsub.app.R
 import com.jsub.app.model.DisplayMode
 import com.jsub.app.model.SubtitleLine
 
-/**
- * 悬浮字幕视图 - 简化版，确保可靠显示
- */
 class FloatingSubtitleView(context: Context) {
 
     companion object {
         private const val TAG = "FloatingSubtitleView"
+        private const val DRAG_THRESHOLD = 20
     }
 
     private val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -30,6 +29,14 @@ class FloatingSubtitleView(context: Context) {
     private val progressBar: ProgressBar = rootView.findViewById(R.id.progressIndicator)
     private val btnClose: TextView = rootView.findViewById(R.id.btnClose)
     private var isShowing = false
+
+    // Drag state
+    private var initialX = 0
+    private var initialY = 0
+    private var touchStartRawX = 0f
+    private var touchStartRawY = 0f
+    private var isDragging = false
+    private var touchStartTime = 0L
 
     private val layoutParams = WindowManager.LayoutParams().apply {
         type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -48,7 +55,51 @@ class FloatingSubtitleView(context: Context) {
     }
 
     init {
-        btnClose.setOnClickListener { hide() }
+        btnClose.setOnClickListener {
+            Log.i(TAG, "Close button clicked")
+            hide()
+        }
+
+        rootView.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialX = layoutParams.x
+                    initialY = layoutParams.y
+                    touchStartRawX = event.rawX
+                    touchStartRawY = event.rawY
+                    isDragging = false
+                    touchStartTime = System.currentTimeMillis()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = (event.rawX - touchStartRawX).toInt()
+                    val dy = (event.rawY - touchStartRawY).toInt()
+                    if (!isDragging && (kotlin.math.abs(dx) > DRAG_THRESHOLD || kotlin.math.abs(dy) > DRAG_THRESHOLD)) {
+                        isDragging = true
+                        btnClose.visibility = View.VISIBLE
+                    }
+                    if (isDragging) {
+                        layoutParams.x = initialX + dx
+                        layoutParams.y = initialY - dy
+                        try {
+                            wm.updateViewLayout(rootView, layoutParams)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Drag update failed: ${e.message}")
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val duration = System.currentTimeMillis() - touchStartTime
+                    if (!isDragging && duration < 300) {
+                        // Toggle close button visibility on tap
+                        btnClose.visibility = if (btnClose.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                    }
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     fun show() {
@@ -56,7 +107,7 @@ class FloatingSubtitleView(context: Context) {
         try {
             wm.addView(rootView, layoutParams)
             isShowing = true
-            Log.i(TAG, "SHOW: floating view added to window manager")
+            Log.i(TAG, "SHOW: floating view added")
         } catch (e: Exception) {
             Log.e(TAG, "SHOW FAILED: ${e.javaClass.simpleName}: ${e.message}")
             throw e
@@ -81,7 +132,6 @@ class FloatingSubtitleView(context: Context) {
         tvJapanese.text = subtitle.japaneseText
         tvJapanese.visibility = if (subtitle.japaneseText.isEmpty()) View.GONE else View.VISIBLE
         progressBar.visibility = if (subtitle.isFinal) View.GONE else View.VISIBLE
-        // Show close button once we have real content
         if (subtitle.chineseText.isNotBlank() && !subtitle.chineseText.startsWith("[")) {
             btnClose.visibility = View.VISIBLE
         }
