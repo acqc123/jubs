@@ -41,7 +41,6 @@ class FloatingSubtitleView(context: Context) {
     private var displayMode = DisplayMode.BILINGUAL
     private var isShowing = false
 
-    // 拖动相关
     private var initialX = 0
     private var initialY = 0
     private var touchStartX = 0f
@@ -58,11 +57,11 @@ class FloatingSubtitleView(context: Context) {
         flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-        gravity = Gravity.TOP or Gravity.START
+        gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
         width = WindowManager.LayoutParams.WRAP_CONTENT
         height = WindowManager.LayoutParams.WRAP_CONTENT
-        x = 50
-        y = 1200 // 默认底部偏上位置
+        x = 0
+        y = 200  // 200px from bottom
     }
 
     init {
@@ -76,87 +75,65 @@ class FloatingSubtitleView(context: Context) {
             progressBar = findViewById(R.id.progressIndicator)
             controlPanel = findViewById(R.id.controlPanel)
 
-            // 拖动支持
             setOnTouchListener { _, event ->
                 handleTouch(event)
                 true
             }
 
-            // 控制面板按钮
             findViewById<View>(R.id.btnClose)?.setOnClickListener {
                 hide()
             }
 
             findViewById<View>(R.id.btnMinimize)?.setOnClickListener {
-                // 最小化：只显示一小条，点击展开
                 toggleMinimize()
             }
         }
     }
 
-    /**
-     * 显示悬浮窗
-     */
     fun show() {
         if (isShowing) return
         try {
             rootView?.let {
                 windowManager.addView(it, layoutParams)
                 isShowing = true
-                Log.d(TAG, "Floating subtitle view shown")
+                Log.d(TAG, "Floating view shown")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show floating view", e)
+            throw e  // Let caller know
         }
     }
 
-    /**
-     * 隐藏悬浮窗
-     */
     fun hide() {
         if (!isShowing) return
         try {
             rootView?.let {
                 windowManager.removeView(it)
                 isShowing = false
-                Log.d(TAG, "Floating subtitle view hidden")
+                Log.d(TAG, "Floating view hidden")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to hide floating view", e)
         }
     }
 
-    /**
-     * 更新字幕内容
-     */
     fun updateSubtitle(subtitle: SubtitleLine) {
         tvJapanese?.text = subtitle.japaneseText
         tvChinese?.text = subtitle.chineseText
-
         progressBar?.visibility = if (subtitle.isFinal) View.GONE else View.VISIBLE
-
         updateVisibilityByMode()
     }
 
-    /**
-     * 设置显示模式
-     */
     fun setDisplayMode(mode: DisplayMode) {
         this.displayMode = mode
         updateVisibilityByMode()
     }
 
-    /**
-     * 设置字体大小
-     */
     fun setFontSize(sizeSp: Int) {
         tvJapanese?.textSize = sizeSp - 1f
         tvChinese?.textSize = sizeSp.toFloat()
     }
 
-    /**
-     * 设置背景不透明度
-     */
     fun setBgOpacity(percent: Int) {
         val alpha = (255 * percent / 100).coerceIn(0, 255)
         rootView?.findViewById<FrameLayout>(R.id.subtitleContainer)?.let { container ->
@@ -164,20 +141,6 @@ class FloatingSubtitleView(context: Context) {
         }
     }
 
-    /**
-     * 设置位置
-     */
-    fun setPosition(x: Int, y: Int) {
-        layoutParams.x = x
-        layoutParams.y = y
-        if (isShowing) {
-            windowManager.updateViewLayout(rootView, layoutParams)
-        }
-    }
-
-    /**
-     * 是否正在显示
-     */
     fun isShowing(): Boolean = isShowing
 
     private fun updateVisibilityByMode() {
@@ -209,14 +172,12 @@ class FloatingSubtitleView(context: Context) {
             MotionEvent.ACTION_MOVE -> {
                 val dx = (event.rawX - touchStartX).toInt()
                 val dy = (event.rawY - touchStartY).toInt()
-
                 if (kotlin.math.abs(dx) > 15 || kotlin.math.abs(dy) > 15) {
                     isDragging = true
                 }
-
                 if (isDragging) {
                     layoutParams.x = initialX + dx
-                    layoutParams.y = initialY + dy
+                    layoutParams.y = initialY - dy  // inverted for bottom gravity
                     rootView?.let {
                         windowManager.updateViewLayout(it, layoutParams)
                     }
@@ -224,7 +185,6 @@ class FloatingSubtitleView(context: Context) {
             }
             MotionEvent.ACTION_UP -> {
                 if (!isDragging) {
-                    // 点击显示/隐藏控制面板
                     toggleControlPanel()
                 }
             }
@@ -232,15 +192,10 @@ class FloatingSubtitleView(context: Context) {
     }
 
     private fun toggleControlPanel() {
-        controlPanel?.visibility = if (controlPanel?.visibility == View.VISIBLE) {
-            View.GONE
-        } else {
-            View.VISIBLE
-        }
+        controlPanel?.visibility = if (controlPanel?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 
     private fun toggleMinimize() {
-        // 简化实现：隐藏日文行
         tvJapanese?.visibility = if (tvJapanese?.visibility == View.VISIBLE) View.GONE else View.VISIBLE
     }
 }
