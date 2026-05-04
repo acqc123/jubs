@@ -29,7 +29,6 @@ import com.jsub.app.speech.SpeechProcessor
 import com.jsub.app.speech.StreamingSpeechProcessor
 import com.jsub.app.speech.engine.EngineFactory
 import com.jsub.app.speech.engine.SenseVoiceEngine
-import com.jsub.app.speech.engine.SpeechRecognitionEngine
 import com.jsub.app.ui.FloatingSubtitleView
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -38,24 +37,24 @@ class FloatingSubtitleService : Service() {
 
     companion object {
         private const val TAG = "FloatingSubtitleService"
-        private const val ACTION_START = "ACTION_START"
-        private const val ACTION_STOP = "ACTION_STOP"
-        private const val EXTRA_RESULT_CODE = "result_code"
-        private const val EXTRA_RESULT_DATA = "result_data"
-        private const val EXTRA_USE_MICROPHONE = "use_microphone"
+        const val ACTION_START = "ACTION_START"
+        const val ACTION_STOP = "ACTION_STOP"
+        const val EXTRA_RESULT_CODE = "result_code"
+        const val EXTRA_RESULT_DATA = "result_data"
+        const val EXTRA_USE_MICROPHONE = "use_microphone"
 
         const val ACTION_SERVICE_STATUS = "com.jsub.app.SERVICE_STATUS"
         const val EXTRA_STATUS = "status"
         const val EXTRA_STATUS_MESSAGE = "status_message"
 
         const val STATUS_STARTING = "starting"
-        const val STATUS_FOREGROUND_OK = "foreground_ok"
-        const val STATUS_FLOATING_VIEW_OK = "floating_view_ok"
-        const val STATUS_FLOATING_VIEW_FAIL = "floating_view_fail"
+        const val STATUS_FLOATING_OK = "floating_ok"
+        const val STATUS_FLOATING_FAIL = "floating_fail"
         const val STATUS_AUDIO_OK = "audio_ok"
-        const val STATUS_AUDIO_FALLBACK = "audio_fallback"
+        const val STATUS_AUDIO_FAIL = "audio_fail"
         const val STATUS_MODEL_DOWNLOADING = "model_downloading"
         const val STATUS_MODEL_READY = "model_ready"
+        const val STATUS_MODEL_FAIL = "model_fail"
         const val STATUS_RUNNING = "running"
         const val STATUS_ERROR = "error"
         const val STATUS_STOPPED = "stopped"
@@ -64,13 +63,12 @@ class FloatingSubtitleService : Service() {
         var isRunning = false
 
         fun start(context: Context, resultCode: Int, data: Intent, useMicrophone: Boolean = false) {
-            val intent = Intent(context, FloatingSubtitleService::class.java).apply {
+            context.startService(Intent(context, FloatingSubtitleService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_RESULT_CODE, resultCode)
                 putExtra(EXTRA_RESULT_DATA, data)
                 putExtra(EXTRA_USE_MICROPHONE, useMicrophone)
-            }
-            context.startService(intent)
+            })
         }
 
         fun stop(context: Context) {
@@ -87,37 +85,32 @@ class FloatingSubtitleService : Service() {
     private var floatingView: FloatingSubtitleView? = null
     private var audioCapturer: AudioCapturer? = null
     private var speechProcessor: SpeechProcessor? = null
-    private var settings: AppSettings = AppSettings()
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "onCreate")
         ensureNotificationChannel()
     }
 
     override fun onBind(intent: Intent?): IBinder = binder
-
     inner class SubtitleBinder : Binder() {
         fun getService(): FloatingSubtitleService = this@FloatingSubtitleService
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.i(TAG, "onStartCommand action=${intent?.action}")
+        Log.i(TAG, "onStartCommand: ${intent?.action}")
 
         try {
             startForeground(JSubApplication.NOTIFICATION_ID, buildNotification())
-            Log.i(TAG, "startForeground() succeeded")
         } catch (e: Exception) {
-            Log.e(TAG, "startForeground() FAILED", e)
-            sendStatusBroadcast(STATUS_ERROR, "前台服务启动失败: ${e.localizedMessage}")
+            Log.e(TAG, "startForeground failed", e)
+            sendStatus(STATUS_ERROR, "前台服务启动失败: ${e.localizedMessage}")
             stopSelf()
             return START_NOT_STICKY
         }
 
         when (intent?.action) {
             ACTION_START -> {
-                sendStatusBroadcast(STATUS_STARTING, "服务启动中...")
-
+                sendStatus(STATUS_STARTING, "字幕服务启动中...")
                 val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, -1)
                 val resultData = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java)
@@ -129,69 +122,57 @@ class FloatingSubtitleService : Service() {
 
                 scope.launch {
                     try {
-                        doFullStart(resultCode, resultData, useMicrophone)
+                        doStart(resultCode, resultData, useMicrophone)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Fatal startup error", e)
-                        sendStatusBroadcast(STATUS_ERROR, "启动失败: ${e.localizedMessage}")
-                        cleanupAndStop()
+                        Log.e(TAG, "Startup crash", e)
+                        sendStatus(STATUS_ERROR, "启动崩溃: ${e.localizedMessage}")
+                        cleanup()
                     }
                 }
             }
             ACTION_STOP -> {
-                sendStatusBroadcast(STATUS_STOPPED, "服务停止")
-                cleanupAndStop()
+                sendStatus(STATUS_STOPPED, "服务已停止")
+                cleanup()
             }
         }
         return START_STICKY
     }
 
-    private suspend fun doFullStart(resultCode: Int, resultData: Intent?, useMicrophone: Boolean) {
-        settings = loadSettings()
-        Log.i(TAG, "Settings loaded")
+    private suspend fun doStart(resultCode: Int, resultData: Intent?, useMicrophone: Boolean) {
+        val settings = loadSettings()
 
-        // Step 1: Show floating window immediately
+        // Step 1: Show floating window FIRST (most important!)
         try {
-            // Hide any existing floating view first (prevent duplicates)
-            try {
-                floatingView?.hide()
-            } catch (_: Exception) {}
-
-            floatingView = FloatingSubtitleView(this@FloatingSubtitleService).apply {
-                setDisplayMode(settings.displayMode)
-                setFontSize(settings.fontSize)
-                setBgOpacity(settings.bgOpacity)
-                show()
-            }
-            sendStatusBroadcast(STATUS_FLOATING_VIEW_OK, "悬浮窗已显示")
-            Log.i(TAG, "Floating view ADDED")
+            floatingView = FloatingSubtitleView(this@FloatingSubtitleService)
+            floatingView!!.setDisplayMode(settings.displayMode)
+            floatingView!!.setFontSize(settings.fontSize)
+            floatingView!!.setBgOpacity(settings.bgOpacity)
+            floatingView!!.show()
+            sendStatus(STATUS_FLOATING_OK, "悬浮字幕窗口已显示")
+            Log.i(TAG, "Floating view VISIBLE")
         } catch (e: Exception) {
-            Log.e(TAG, "Floating view FAILED", e)
-            sendStatusBroadcast(STATUS_FLOATING_VIEW_FAIL, "悬浮窗显示失败: ${e.localizedMessage}")
+            Log.e(TAG, "Floating view FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            sendStatus(STATUS_FLOATING_FAIL, "悬浮窗显示失败: ${e.localizedMessage}")
+            // Continue anyway - at least notification shows
         }
 
-        // Show initial status
         floatingView?.updateSubtitle(
             SubtitleLine("", "[正在初始化音频...]", System.currentTimeMillis(), true)
         )
 
-        // Step 2: Start audio capture
-        val capturer: AudioCapturer = if (useMicrophone) {
-            Log.i(TAG, "Using MicrophoneCapturer")
+        // Step 2: Start audio
+        val capturer = if (useMicrophone) {
             MicrophoneCapturer()
         } else {
-            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
-                as MediaProjectionManager
+            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             mediaProjection = projectionManager.getMediaProjection(resultCode, resultData!!)
-
             if (mediaProjection == null) {
-                Log.w(TAG, "MediaProjection null, fallback to microphone")
-                sendStatusBroadcast(STATUS_AUDIO_FALLBACK, "录屏授权无效，切换麦克风")
+                sendStatus(STATUS_AUDIO_FAIL, "录屏授权无效，自动切换麦克风")
                 MicrophoneCapturer()
             } else {
                 SystemAudioCapturer()
             }
         }
-
         audioCapturer = capturer
 
         try {
@@ -200,21 +181,19 @@ class FloatingSubtitleService : Service() {
             } else {
                 capturer.startCapture()
             }
-            sendStatusBroadcast(STATUS_AUDIO_OK, "音频捕获已启动")
-            Log.i(TAG, "Audio capture started")
+            sendStatus(STATUS_AUDIO_OK, "音频捕获已启动")
         } catch (e: Exception) {
-            Log.e(TAG, "Audio capture failed, fallback", e)
-            sendStatusBroadcast(STATUS_AUDIO_FALLBACK, "系统音频失败，尝试麦克风: ${e.localizedMessage}")
+            sendStatus(STATUS_AUDIO_FAIL, "音频失败: ${e.localizedMessage}，尝试麦克风...")
             try { audioCapturer?.stopCapture(); audioCapturer?.release() } catch (_: Exception) {}
             val mic = MicrophoneCapturer()
             audioCapturer = mic
             mic.startCapture()
-            sendStatusBroadcast(STATUS_AUDIO_OK, "已切换到麦克风")
+            sendStatus(STATUS_AUDIO_OK, "已切换到麦克风模式")
         }
 
-        // Step 3: Create speech engine with model download progress
+        // Step 3: Init speech engine
         floatingView?.updateSubtitle(
-            SubtitleLine("", "[正在加载语音识别引擎...]", System.currentTimeMillis(), true)
+            SubtitleLine("", "[正在加载语音识别...]", System.currentTimeMillis(), true)
         )
 
         val engine = withContext(Dispatchers.IO) {
@@ -225,53 +204,49 @@ class FloatingSubtitleService : Service() {
                     apiKey = settings.speechApiKey
                 )
 
-                // If using SenseVoice, initialize (may download 200MB model)
                 if (eng is SenseVoiceEngine) {
-                    sendStatusBroadcast(STATUS_MODEL_DOWNLOADING, "正在下载/加载SenseVoice模型 (~200MB)...")
-                    val initSuccess = eng.initialize()
-                    if (!initSuccess) {
-                        Log.w(TAG, "SenseVoice init failed, falling back")
-                        sendStatusBroadcast(STATUS_ERROR, "本地模型加载失败，尝试在线识别...")
+                    sendStatus(STATUS_MODEL_DOWNLOADING, "正在加载本地模型 (~200MB)...")
+                    val ok = eng.initialize()
+                    if (!ok) {
+                        sendStatus(STATUS_MODEL_FAIL, "本地模型加载失败")
                         null
                     } else {
-                        sendStatusBroadcast(STATUS_MODEL_READY, "本地模型已就绪")
+                        sendStatus(STATUS_MODEL_READY, "本地模型已就绪")
                         eng
                     }
                 } else {
                     eng
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Engine creation failed", e)
+                sendStatus(STATUS_MODEL_FAIL, "引擎创建失败: ${e.localizedMessage}")
                 null
             }
         }
 
-        // Fallback to online engine if local failed
+        // Fallback to AnimeWhisper (online)
         val finalEngine = engine ?: withContext(Dispatchers.IO) {
             try {
-                sendStatusBroadcast(STATUS_MODEL_DOWNLOADING, "切换到在线识别引擎...")
-                // Try AnimeWhisper online
-                val fallback = EngineFactory.createEngine(
+                sendStatus(STATUS_MODEL_DOWNLOADING, "切换到在线识别引擎...")
+                EngineFactory.createEngine(
                     context = this@FloatingSubtitleService,
                     provider = com.jsub.app.model.SpeechProvider.ANIME_WHISPER,
                     apiKey = settings.speechApiKey
                 )
-                fallback
             } catch (e: Exception) {
-                Log.e(TAG, "Fallback engine also failed", e)
+                sendStatus(STATUS_MODEL_FAIL, "在线引擎也失败: ${e.localizedMessage}")
                 null
             }
         }
 
         if (finalEngine == null) {
-            sendStatusBroadcast(STATUS_ERROR, "所有语音识别引擎均不可用")
+            sendStatus(STATUS_ERROR, "没有可用的语音识别引擎")
             floatingView?.updateSubtitle(
-                SubtitleLine("", "[引擎初始化失败]", System.currentTimeMillis(), true)
+                SubtitleLine("", "[引擎不可用，请检查设置]", System.currentTimeMillis(), true)
             )
             return
         }
 
-        // Step 4: Create translation API and processor
+        // Step 4: Create processor
         val translationApi: TranslationApi = when (settings.translationProvider) {
             TranslationProvider.GOOGLE_TRANSLATE -> GoogleTranslateApi(settings.translationApiKey)
             TranslationProvider.LIBRE_TRANSLATE -> LibreTranslateApi()
@@ -284,34 +259,25 @@ class FloatingSubtitleService : Service() {
 
         try {
             val flow = audioCapturer?.audioBufferFlow
-            if (flow != null) {
-                processor.startProcessing(flow)
-                Log.i(TAG, "Speech processing started")
-            } else {
-                throw IllegalStateException("Audio flow is null")
-            }
+            if (flow != null) processor.startProcessing(flow)
+            else throw IllegalStateException("音频流为空")
         } catch (e: Exception) {
-            Log.e(TAG, "Processing start failed", e)
-            sendStatusBroadcast(STATUS_ERROR, "语音识别启动失败: ${e.localizedMessage}")
+            sendStatus(STATUS_ERROR, "语音识别启动失败: ${e.localizedMessage}")
             return
         }
 
         scope.launch {
             processor.subtitleFlow.collectLatest { subtitle ->
-                updateSubtitle(subtitle)
+                floatingView?.updateSubtitle(subtitle)
             }
         }
 
         isRunning = true
-        sendStatusBroadcast(STATUS_RUNNING, "字幕服务运行中")
-        Log.i(TAG, "Service FULLY started")
+        sendStatus(STATUS_RUNNING, "字幕服务运行中 - 请播放日语内容")
+        Log.i(TAG, "Service fully running")
     }
 
-    private fun updateSubtitle(subtitle: SubtitleLine) {
-        floatingView?.updateSubtitle(subtitle)
-    }
-
-    private fun cleanupAndStop() {
+    private fun cleanup() {
         scope.cancel()
         try { floatingView?.hide() } catch (_: Exception) {}
         floatingView = null
@@ -330,20 +296,18 @@ class FloatingSubtitleService : Service() {
         return try {
             com.jsub.app.data.SettingsRepository(this).loadSettings()
         } catch (e: Exception) {
-            Log.w(TAG, "Settings load failed", e)
             AppSettings()
         }
     }
 
-    private fun sendStatusBroadcast(status: String, message: String) {
+    private fun sendStatus(status: String, message: String) {
         try {
             sendBroadcast(Intent(ACTION_SERVICE_STATUS).apply {
                 putExtra(EXTRA_STATUS, status)
                 putExtra(EXTRA_STATUS_MESSAGE, message)
             })
-            Log.d(TAG, "Broadcast: $status - $message")
         } catch (e: Exception) {
-            Log.w(TAG, "Broadcast failed", e)
+            Log.w(TAG, "Broadcast failed: ${e.message}")
         }
     }
 
@@ -356,7 +320,6 @@ class FloatingSubtitleService : Service() {
             this, 1, Intent(this, FloatingSubtitleService::class.java).apply { action = ACTION_STOP },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         return NotificationCompat.Builder(this, JSubApplication.CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(getString(R.string.service_running))
@@ -373,9 +336,7 @@ class FloatingSubtitleService : Service() {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             if (manager.getNotificationChannel(JSubApplication.CHANNEL_ID) == null) {
                 val channel = NotificationChannel(
-                    JSubApplication.CHANNEL_ID,
-                    "字幕服务",
-                    NotificationManager.IMPORTANCE_LOW
+                    JSubApplication.CHANNEL_ID, "字幕服务", NotificationManager.IMPORTANCE_LOW
                 ).apply {
                     description = "保持字幕服务在前台运行"
                     setShowBadge(false)
