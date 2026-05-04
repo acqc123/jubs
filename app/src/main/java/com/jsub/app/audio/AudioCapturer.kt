@@ -12,11 +12,18 @@ import kotlinx.coroutines.flow.Flow
 interface AudioCapturer {
 
     /**
-     * 开始音频捕获
-     *
-     * @param mediaProjection MediaProjection实例，用于捕获系统音频
+     * 开始音频捕获（系统音频模式，需要MediaProjection）
      */
-    fun startCapture(mediaProjection: MediaProjection)
+    fun startCapture(mediaProjection: MediaProjection) {
+        throw UnsupportedOperationException("This capturer does not support system audio capture")
+    }
+
+    /**
+     * 开始音频捕获（麦克风模式，无需MediaProjection）
+     */
+    fun startCapture() {
+        throw UnsupportedOperationException("This capturer does not support microphone capture")
+    }
 
     /**
      * 停止音频捕获
@@ -30,8 +37,6 @@ interface AudioCapturer {
 
     /**
      * PCM音频数据流
-     *
-     * 每次emit一个音频数据块，约0.5秒的音频数据
      */
     val audioBufferFlow: Flow<ByteArray>
 }
