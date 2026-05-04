@@ -59,7 +59,6 @@
                 android:textSize="14sp"
                 android:textColor="@android:color/darker_gray" />
 
-            <!-- 状态卡片 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/statusCard"
                 android:layout_width="match_parent"
@@ -97,7 +96,6 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- 使用说明 -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -123,12 +121,12 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="1. 点击"开启字幕"按钮
+                        android:text="1. 点击开启字幕按钮
 2. 授予悬浮窗和麦克风权限
 3. 播放日语视频或音频
-4. 白底黑字的字幕会出现在屏幕底部
+4. 白底黑字字幕出现在屏幕底部
 
-注意：首次使用需要下载~200MB离线模型，建议在WiFi环境下进行。"
+注意：首次使用需下载约200MB模型，建议在WiFi环境下进行。"
                         android:textSize="12sp"
                         android:textColor="@android:color/darker_gray"
                         android:lineSpacingMultiplier="1.4" />
