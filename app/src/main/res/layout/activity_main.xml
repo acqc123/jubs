@@ -27,95 +27,160 @@
     </com.google.android.material.appbar.MaterialToolbar>
 
     <!-- 主内容区域 -->
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="32dp">
+        android:layout_height="match_parent">
 
-        <!-- 应用Logo/图标 -->
-        <ImageView
-            android:layout_width="120dp"
-            android:layout_height="120dp"
-            android:src="@drawable/ic_notification"
-            android:contentDescription="@string/app_name" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="@string/app_title"
-            android:textSize="28sp"
-            android:textStyle="bold"
-            android:textColor="@color/primary_color" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="实时日译中悬浮字幕"
-            android:textSize="16sp"
-            android:textColor="@android:color/darker_gray" />
-
-        <!-- 状态指示器 -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/statusCard"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="4dp"
-            app:strokeWidth="0dp">
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="24dp">
 
-            <LinearLayout
+            <!-- 应用Logo/图标 -->
+            <ImageView
+                android:layout_width="100dp"
+                android:layout_height="100dp"
+                android:src="@drawable/ic_notification"
+                android:contentDescription="@string/app_name" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="@string/app_title"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:textColor="@color/primary_color" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="实时日译中悬浮字幕"
+                android:textSize="14sp"
+                android:textColor="@android:color/darker_gray" />
+
+            <!-- 状态指示器 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/statusCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp"
-                android:gravity="center">
+                android:layout_marginTop="24dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp"
+                app:strokeWidth="0dp">
 
-                <TextView
-                    android:id="@+id/tvStatus"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="服务未运行"
-                    android:textSize="16sp"
-                    android:textColor="@color/black" />
+                    android:orientation="vertical"
+                    android:padding="20dp"
+                    android:gravity="center">
 
-                <TextView
-                    android:id="@+id/tvStatusDetail"
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:id="@+id/tvStatus"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="服务未运行"
+                        android:textSize="16sp"
+                        android:textColor="@color/black" />
+
+                    <TextView
+                        android:id="@+id/tvStatusDetail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="点击下方按钮开启实时字幕"
+                        android:textSize="13sp"
+                        android:textColor="@android:color/darker_gray" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 音频源选择 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="2dp"
+                app:strokeWidth="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="点击下方按钮开启实时字幕"
-                    android:textSize="13sp"
-                    android:textColor="@android:color/darker_gray" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
-        <!-- 主按钮 -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnToggleSubtitle"
-            android:layout_width="match_parent"
-            android:layout_height="60dp"
-            android:layout_marginTop="24dp"
-            android:text="@string/start_subtitle"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            app:cornerRadius="30dp"
-            app:backgroundTint="@color/primary_color" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="音频捕获方式"
+                        android:textSize="14sp"
+                        android:textColor="@color/black"
+                        android:textStyle="bold" />
 
-        <!-- 说明文字 -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="使用说明:\n1. 授予悬浮窗和音频捕获权限\n2. 播放日文视频或音频\n3. 点击开启字幕即可实时翻译\n\n支持: ASMR、动漫、日剧、直播等"
-            android:textSize="13sp"
-            android:textColor="@android:color/darker_gray"
-            android:lineSpacingMultiplier="1.3"
-            android:gravity="center" />
+                    <RadioGroup
+                        android:id="@+id/rgAudioSource"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="8dp">
 
-    </LinearLayout>
+                        <RadioButton
+                            android:id="@+id/rbSystemAudio"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="系统音频（内部录制，需录屏授权）"
+                            android:checked="true" />
+
+                        <RadioButton
+                            android:id="@+id/rbMicrophone"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="麦克风（录制环境音，无需授权弹窗）" />
+                    </RadioGroup>
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="提示：戴耳机看视频建议用系统音频；如果录屏弹窗无法工作，请切换到麦克风模式"
+                        android:textSize="11sp"
+                        android:textColor="@android:color/darker_gray" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 主按钮 -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnToggleSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="60dp"
+                android:layout_marginTop="20dp"
+                android:text="@string/start_subtitle"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                app:cornerRadius="30dp"
+                app:backgroundTint="@color/primary_color" />
+
+            <!-- 说明文字 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:text="使用说明:
+1. 选择音频捕获方式
+2. 授予悬浮窗权限
+3. 播放日文视频或音频
+4. 点击开启字幕即可实时翻译
+
+支持: ASMR、动漫、日剧、直播等"
+                android:textSize="12sp"
+                android:textColor="@android:color/darker_gray"
+                android:lineSpacingMultiplier="1.3"
+                android:gravity="center" />
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
 </LinearLayout>
