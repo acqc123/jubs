@@ -53,8 +53,8 @@ class SettingsRepository(context: Context) {
             fontSize = prefs.getInt(KEY_FONT_SIZE, 16),
             bgOpacity = prefs.getInt(KEY_BG_OPACITY, 80),
             audioSource = safeParseEnum(
-                prefs.getString(KEY_AUDIO_SOURCE, AudioSource.SYSTEM_AUDIO.name),
-                AudioSource.SYSTEM_AUDIO
+                prefs.getString(KEY_AUDIO_SOURCE, AudioSource.MICROPHONE.name),
+                AudioSource.MICROPHONE
             ),
             speechProvider = safeParseEnum(
                 prefs.getString(KEY_SPEECH_PROVIDER, SpeechProvider.ANIME_WHISPER.name),

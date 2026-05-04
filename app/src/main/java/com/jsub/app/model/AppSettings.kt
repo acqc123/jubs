@@ -59,9 +59,9 @@ data class AppSettings(
     val displayMode: DisplayMode = DisplayMode.BILINGUAL,
     val fontSize: Int = 16,
     val bgOpacity: Int = 80,
-    val audioSource: AudioSource = AudioSource.SYSTEM_AUDIO,
-    val speechProvider: SpeechProvider = SpeechProvider.SENSEVOICE_LOCAL,
-    val translationProvider: TranslationProvider = TranslationProvider.LIBRE_TRANSLATE,
+    val audioSource: AudioSource = AudioSource.MICROPHONE,
+    val speechProvider: SpeechProvider = SpeechProvider.ANIME_WHISPER,
+    val translationProvider: TranslationProvider = TranslationProvider.DEEPSEEK,
     val subtitleColor: Int = 0xFFFFFF,
     val subtitlePositionY: Int = 80
 )

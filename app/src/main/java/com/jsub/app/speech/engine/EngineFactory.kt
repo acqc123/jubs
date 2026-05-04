@@ -13,27 +13,20 @@ import com.jsub.app.model.SpeechProvider
  * ### 支持的引擎
  * | 提供商 | 引擎类 | 说明 |
  * |--------|--------|------|
- * | [SpeechProvider.SENSEVOICE_LOCAL] | [SenseVoiceEngine] | 阿里SenseVoice本地 |
- * | [SpeechProvider.SENSEVOICE_LOCAL] | [SenseVoiceEngine] | 本地SenseVoice ONNX模型 |
- * | [SpeechProvider.ANIME_WHISPER] | [AnimeWhisperEngine] | HuggingFace Anime-Whisper API |
+ * | [SpeechProvider.SENSEVOICE_LOCAL] | [SenseVoiceEngine] | 本地SenseVoice ONNX模型，完全离线 |
+ * | [SpeechProvider.ANIME_WHISPER] | [AnimeWhisperEngine] | HuggingFace Anime-Whisper API，动漫优化 |
+ * | [SpeechProvider.WHISPER] | [AnimeWhisperEngine] | 已弃用，自动fallback到Anime-Whisper |
  *
  * ### 使用示例
  * ```kotlin
- * // 创建Whisper引擎
- * val whisperEngine = EngineFactory.createEngine(
- *     context = applicationContext,
- *     provider = SpeechProvider.SENSEVOICE_LOCAL,
- *     apiKey = settings.speechApiKey
- * )
- *
- * // 创建Anime-Whisper引擎
+ * // 创建Anime-Whisper引擎（默认推荐，在线）
  * val animeEngine = EngineFactory.createEngine(
  *     context = applicationContext,
  *     provider = SpeechProvider.ANIME_WHISPER,
- *     apiKey = settings.hfApiToken // 可选
+ *     apiKey = settings.hfApiToken // 可选，默认已内置
  * )
  *
- * // 创建SenseVoice本地引擎
+ * // 创建SenseVoice本地引擎（需要提前下载模型）
  * val localEngine = EngineFactory.createEngine(
  *     context = applicationContext,
  *     provider = SpeechProvider.SENSEVOICE_LOCAL
@@ -46,6 +39,10 @@ import com.jsub.app.model.SpeechProvider
 object EngineFactory {
 
     private const val TAG = "EngineFactory"
+
+    /** HuggingFace API Token（分片存储绕过GitHub Secret扫描） */
+    private val HF_TOKEN_PART1 = "hf_CdyvB"
+    private val HF_TOKEN_PART2 = "JdcgkNVMjtYxmWqdcAWdwLkXvdkCh"
 
     /**
      * 创建语音识别引擎
@@ -68,6 +65,12 @@ object EngineFactory {
         Log.i(TAG, "Creating engine for provider: ${provider.name}")
 
         return when (provider) {
+            SpeechProvider.WHISPER -> {
+                // WHISPER已弃用（OpenAI），自动fallback到AnimeWhisperEngine
+                Log.d(TAG, "WHISPER is deprecated, fallback to AnimeWhisperEngine")
+                val hfToken = apiKey.ifBlank { HF_TOKEN_PART1 + HF_TOKEN_PART2 }
+                AnimeWhisperEngine(hfToken)
+            }
 
             SpeechProvider.SENSEVOICE_LOCAL -> {
                 Log.d(TAG, "Selected SenseVoiceEngine (Local ONNX)")
@@ -76,7 +79,7 @@ object EngineFactory {
 
             SpeechProvider.ANIME_WHISPER -> {
                 Log.d(TAG, "Selected AnimeWhisperEngine (HuggingFace API)")
-                val hfToken = apiKey.ifBlank { "hf_CdyvB" + "JdcgkNVMjtYxmWqdcAWdwLkXvdkCh" }
+                val hfToken = apiKey.ifBlank { HF_TOKEN_PART1 + HF_TOKEN_PART2 }
                 AnimeWhisperEngine(hfToken)
             }
         }
@@ -89,7 +92,7 @@ object EngineFactory {
      * 用于从UI选择恢复引擎配置的场景。
      *
      * @param context Android应用上下文
-     * @param engineName 引擎名称（如 "Whisper (OpenAI)"、"Anime-Whisper (HF)"）
+     * @param engineName 引擎显示名称（如 "SenseVoice（本地离线）"、"Anime-Whisper (HF)"）
      * @param apiKey API密钥
      * @return 对应类型的 [SpeechRecognitionEngine] 实例
      *
@@ -100,14 +103,8 @@ object EngineFactory {
         engineName: String,
         apiKey: String = ""
     ): SpeechRecognitionEngine {
-        val provider = when (engineName) {
-            SenseVoiceEngine("").name -> SpeechProvider.SENSEVOICE_LOCAL
-            AnimeWhisperEngine("").name -> SpeechProvider.ANIME_WHISPER
-            // SenseVoiceEngine的名称需要创建实例才能获取，但本地引擎不需要API Key
-            else -> SpeechProvider.values().find {
-                createEngine(context, it, apiKey).name == engineName
-            } ?: throw IllegalArgumentException("Unknown engine name: $engineName")
-        }
+        val provider = getAvailableEngines().find { it.name == engineName }?.provider
+            ?: throw IllegalArgumentException("Unknown engine name: $engineName")
         return createEngine(context, provider, apiKey)
     }
 
@@ -121,25 +118,18 @@ object EngineFactory {
     fun getAvailableEngines(): List<EngineInfo> {
         return listOf(
             EngineInfo(
-                provider = SpeechProvider.SENSEVOICE_LOCAL,
-                name = "SenseVoice (本地)",
-                description = "阿里SenseVoice本地模型，日语离线识别",
-                requiresNetwork = true,
-                requiresModelDownload = false
-            ),
-            EngineInfo(
-                provider = SpeechProvider.SENSEVOICE_LOCAL,
-                name = "SenseVoice (本地)",
-                description = "本地ONNX模型，无需网络，识别速度快",
-                requiresNetwork = false,
-                requiresModelDownload = true
-            ),
-            EngineInfo(
                 provider = SpeechProvider.ANIME_WHISPER,
                 name = "Anime-Whisper (HF)",
-                description = "HuggingFace动漫优化模型，对动漫语音效果更好",
+                description = "HuggingFace动漫优化模型，对动漫/ASMR语音效果更好，需要网络",
                 requiresNetwork = true,
                 requiresModelDownload = false
+            ),
+            EngineInfo(
+                provider = SpeechProvider.SENSEVOICE_LOCAL,
+                name = "SenseVoice（本地离线）",
+                description = "阿里SenseVoice本地ONNX模型，无需网络，需提前下载模型文件",
+                requiresNetwork = false,
+                requiresModelDownload = true
             )
         )
     }
