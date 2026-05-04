@@ -25,18 +25,22 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+          cache-disabled: true
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
       - name: Build Debug APK
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace --no-daemon --no-build-cache > build.log 2>&1 || {
+          gradle assembleDebug --stacktrace --no-daemon --no-build-cache > build.log 2>&1 || {
             echo "=== BUILD FAILED ==="
-            tail -100 build.log
+            tail -80 build.log
             exit 1
           }
-          echo "=== APK ==="
           ls -la app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload build log on failure
@@ -62,17 +66,12 @@ jobs:
             Automated debug build of JSub real-time subtitle app.
             
             ### Features
-            - Real-time Japanese speech recognition
-            - SenseVoice (local offline) + Anime-Whisper (online) dual engine
-            - DeepSeek / Kimi / LibreTranslate translation support
-            - Floating subtitle window overlay
+            - 4 recognition engines: Anime-Whisper, SenseVoice, Xunfei, Baidu
+            - DeepSeek translation
+            - Floating subtitle overlay
             
             ### Install
-            Download `app-debug.apk` below and install on your Android device.
-            
-            ### Requirements
-            - Android 8.0+ (API 26)
-            - Network connection (for translation and online recognition)
+            Download `app-debug.apk` below.
           files: app/build/outputs/apk/debug/app-debug.apk
           draft: false
           prerelease: true
