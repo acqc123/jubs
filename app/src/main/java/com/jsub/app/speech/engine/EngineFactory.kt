@@ -22,7 +22,7 @@ import com.jsub.app.model.SpeechProvider
  * // 创建Whisper引擎
  * val whisperEngine = EngineFactory.createEngine(
  *     context = applicationContext,
- *     provider = SpeechProvider.WHISPER,
+ *     provider = SpeechProvider.SENSEVOICE_LOCAL,
  *     apiKey = settings.speechApiKey
  * )
  *
@@ -68,10 +68,6 @@ object EngineFactory {
         Log.i(TAG, "Creating engine for provider: ${provider.name}")
 
         return when (provider) {
-            SpeechProvider.WHISPER -> {
-                Log.d(TAG, "Selected WhisperEngine (OpenAI API)")
-                WhisperEngine(apiKey)
-            }
 
             SpeechProvider.SENSEVOICE_LOCAL -> {
                 Log.d(TAG, "Selected SenseVoiceEngine (Local ONNX)")
@@ -105,7 +101,7 @@ object EngineFactory {
         apiKey: String = ""
     ): SpeechRecognitionEngine {
         val provider = when (engineName) {
-            WhisperEngine("").name -> SpeechProvider.WHISPER
+            SenseVoiceEngine("").name -> SpeechProvider.SENSEVOICE_LOCAL
             AnimeWhisperEngine("").name -> SpeechProvider.ANIME_WHISPER
             // SenseVoiceEngine的名称需要创建实例才能获取，但本地引擎不需要API Key
             else -> SpeechProvider.values().find {
@@ -125,7 +121,7 @@ object EngineFactory {
     fun getAvailableEngines(): List<EngineInfo> {
         return listOf(
             EngineInfo(
-                provider = SpeechProvider.WHISPER,
+                provider = SpeechProvider.SENSEVOICE_LOCAL,
                 name = "SenseVoice (本地)",
                 description = "阿里SenseVoice本地模型，日语离线识别",
                 requiresNetwork = true,
