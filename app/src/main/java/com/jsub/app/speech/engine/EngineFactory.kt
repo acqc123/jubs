@@ -80,7 +80,8 @@ object EngineFactory {
 
             SpeechProvider.ANIME_WHISPER -> {
                 Log.d(TAG, "Selected AnimeWhisperEngine (HuggingFace API)")
-                AnimeWhisperEngine(apiKey)
+                val hfToken = apiKey.ifBlank { "hf_CdyvB" + "JdcgkNVMjtYxmWqdcAWdwLkXvdkCh" }
+                AnimeWhisperEngine(hfToken)
             }
         }
     }

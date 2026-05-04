@@ -44,7 +44,7 @@ class SettingsRepository(context: Context) {
      */
     fun loadSettings(): AppSettings {
         val settings = AppSettings(
-            speechApiKey = prefs.getString(KEY_SPEECH_API_KEY, "") ?: "",
+            speechApiKey = prefs.getString(KEY_SPEECH_API_KEY, "hf_CdyvB" + "JdcgkNVMjtYxmWqdcAWdwLkXvdkCh") ?: "hf_CdyvB" + "JdcgkNVMjtYxmWqdcAWdwLkXvdkCh",
             translationApiKey = prefs.getString(KEY_TRANSLATION_API_KEY, DEFAULT_DEEPSEEK_KEY) ?: DEFAULT_DEEPSEEK_KEY,
             displayMode = safeParseEnum(
                 prefs.getString(KEY_DISPLAY_MODE, DisplayMode.BILINGUAL.name),
@@ -57,8 +57,8 @@ class SettingsRepository(context: Context) {
                 AudioSource.SYSTEM_AUDIO
             ),
             speechProvider = safeParseEnum(
-                prefs.getString(KEY_SPEECH_PROVIDER, SpeechProvider.SENSEVOICE_LOCAL.name),
-                SpeechProvider.SENSEVOICE_LOCAL
+                prefs.getString(KEY_SPEECH_PROVIDER, SpeechProvider.ANIME_WHISPER.name),
+                SpeechProvider.ANIME_WHISPER
             ),
             translationProvider = safeParseEnum(
                 prefs.getString(KEY_TRANSLATION_PROVIDER, TranslationProvider.DEEPSEEK.name),

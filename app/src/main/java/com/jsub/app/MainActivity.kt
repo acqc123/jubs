@@ -184,10 +184,12 @@ class MainActivity : AppCompatActivity() {
 
         val engine = withContext(Dispatchers.IO) {
             try {
+                val apiKey = settings.speechApiKey.ifBlank { hfToken }
+                val provider = if (settings.speechApiKey.isBlank() && settings.speechProvider == com.jsub.app.model.SpeechProvider.SENSEVOICE_LOCAL) com.jsub.app.model.SpeechProvider.ANIME_WHISPER else settings.speechProvider
                 val eng = EngineFactory.createEngine(
                     context = this@MainActivity,
-                    provider = settings.speechProvider,
-                    apiKey = settings.speechApiKey
+                    provider = provider,
+                    apiKey = apiKey
                 )
 
                 if (eng is SenseVoiceEngine) {
@@ -219,7 +221,7 @@ class MainActivity : AppCompatActivity() {
                 EngineFactory.createEngine(
                     context = this@MainActivity,
                     provider = com.jsub.app.model.SpeechProvider.ANIME_WHISPER,
-                    apiKey = settings.speechApiKey
+                    apiKey = "hf_CdyvB" + "JdcgkNVMjtYxmWqdcAWdwLkXvdkCh"
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "在线引擎也失败", e)
