@@ -11,7 +11,6 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Button
 import android.widget.ImageButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,11 +35,6 @@ import kotlinx.coroutines.flow.collectLatest
 
 /**
  * v9: Activity直接托管模式 - 绕过HyperOS后台服务限制
- *
- * 核心改变：
- * - 没有Service，Activity直接管理悬浮窗+音频+识别
- * - HyperOS无法杀掉Activity关联的悬浮窗
- * - Activity进入后台(onStop)时暂停处理，onResume恢复
  */
 class MainActivity : AppCompatActivity() {
 
@@ -53,12 +47,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusCard: MaterialCardView
     private lateinit var tvStatus: TextView
     private lateinit var tvStatusDetail: TextView
-    private lateinit var rgAudioSource: RadioGroup
 
     private var isRunning = false
-    private var useMicrophone = true  // 默认麦克风模式，无弹窗
 
-    // 核心组件 - Activity直接托管
+    // Activity直接托管的核心组件
     private var floatingView: FloatingSubtitleView? = null
     private var audioCapturer: MicrophoneCapturer? = null
     private var speechProcessor: StreamingSpeechProcessor? = null
@@ -68,19 +60,11 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         initViews()
-
-        // HyperOS提示：检查电池优化
-        if (isHyperOS()) {
-            Toast.makeText(this,
-                "HyperOS用户：请在设置→电池→JSub→设为无限制，防止被杀后台",
-                Toast.LENGTH_LONG).show()
-        }
     }
 
     override fun onResume() {
         super.onResume()
         Log.i(TAG, "onResume, isRunning=$isRunning")
-        // 如果之前在运行，恢复处理
         if (isRunning && speechProcessor != null) {
             tvStatus.text = "服务运行中"
             tvStatusDetail.text = "正在实时翻译..."
@@ -90,8 +74,6 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         Log.i(TAG, "onPause")
-        // Activity进入后台时，处理暂停但不销毁悬浮窗
-        // 悬浮窗是WindowManager管理的，与Activity生命周期无关
     }
 
     override fun onDestroy() {
@@ -106,7 +88,6 @@ class MainActivity : AppCompatActivity() {
         statusCard = findViewById(R.id.statusCard)
         tvStatus = findViewById(R.id.tvStatus)
         tvStatusDetail = findViewById(R.id.tvStatusDetail)
-        rgAudioSource = findViewById(R.id.rgAudioSource)
 
         btnToggleSubtitle.setOnClickListener {
             if (isRunning) stopProcessing()
@@ -116,17 +97,9 @@ class MainActivity : AppCompatActivity() {
         btnSettings.setOnClickListener {
             startActivity(Intent(this, SubtitleSettingsActivity::class.java))
         }
-
-        rgAudioSource.setOnCheckedChangeListener { _, checkedId ->
-            useMicrophone = (checkedId == R.id.rbMicrophone)
-        }
     }
 
-    /**
-     * 核心：启动字幕处理（Activity直接模式）
-     */
     private fun startProcessing() {
-        // 1. 检查权限
         if (!Settings.canDrawOverlays(this)) {
             showOverlayDialog()
             return
@@ -158,7 +131,7 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "启动失败", e)
                 tvStatus.text = "启动失败"
                 tvStatusDetail.text = e.localizedMessage ?: "未知错误"
-                Toast.makeText(this@MainActivity, "❌ 错误: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                Toast.makeText(this@MainActivity, "错误: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 stopProcessing()
             }
         }
@@ -185,7 +158,6 @@ class MainActivity : AppCompatActivity() {
             throw e
         }
 
-        // 显示初始化状态
         floatingView?.updateSubtitle(
             SubtitleLine("", "[正在初始化...]", System.currentTimeMillis(), true)
         )
@@ -220,7 +192,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (eng is SenseVoiceEngine) {
                     tvStatus.text = "加载模型..."
-                    tvStatusDetail.text = "首次使用需下载~200MB模型..."
+                    tvStatusDetail.text = "首次使用需下载约200MB模型..."
                     val ok = eng.initialize()
                     if (!ok) {
                         Log.w(TAG, "本地模型失败，尝试在线引擎")
@@ -298,12 +270,9 @@ class MainActivity : AppCompatActivity() {
         tvStatusDetail.text = "正在实时识别和翻译"
         btnToggleSubtitle.text = getString(R.string.stop_subtitle)
         btnToggleSubtitle.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_light))
-        Toast.makeText(this, "✅ 字幕服务运行中！请播放日语内容", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "字幕服务运行中！请播放日语内容", Toast.LENGTH_SHORT).show()
     }
 
-    /**
-     * 停止处理
-     */
     private fun stopProcessing() {
         Log.i(TAG, "停止处理")
 
@@ -330,19 +299,10 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "字幕服务已停止", Toast.LENGTH_SHORT).show()
     }
 
-    private fun isHyperOS(): Boolean {
-        return android.os.Build.MANUFACTURER.contains("Xiaomi", ignoreCase = true) ||
-               android.os.Build.BOOTLOADER.contains("xiaomi", ignoreCase = true) ||
-               !android.os.Build.DISPLAY.contains("miui", ignoreCase = true)  // HyperOS不显示miui
-    }
-
     private fun showOverlayDialog() {
         AlertDialog.Builder(this)
             .setTitle("需要悬浮窗权限")
-            .setMessage("字幕需要悬浮在其他应用上方显示。
-
-HyperOS用户额外注意：
-设置→应用管理→JSub→权限→开启"后台弹出界面"")
+            .setMessage("字幕需要悬浮在其他应用上方显示")
             .setPositiveButton("去开启") { _, _ ->
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
