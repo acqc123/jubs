@@ -79,7 +79,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun saveSettings(
         speechKey: String = _speechApiKey.value ?: "",
         translationKey: String = _translationApiKey.value ?: "",
-        speechProvider: SpeechProvider = _speechProvider.value ?: SpeechProvider.SENSEVOICE_LOCAL,
+        speechProvider: SpeechProvider = _speechProvider.value ?: SpeechProvider.ANIME_WHISPER,
         mode: DisplayMode = _displayMode.value ?: DisplayMode.BILINGUAL,
         provider: TranslationProvider = _translationProvider.value ?: TranslationProvider.DEEPSEEK,
         fontSize: Int = _fontSize.value ?: 16,

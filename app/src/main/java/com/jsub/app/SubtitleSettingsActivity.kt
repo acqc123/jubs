@@ -16,15 +16,12 @@ import com.jsub.app.model.TranslationProvider
 import com.jsub.app.ui.SettingsViewModel
 
 /**
- * 字幕设置Activity
+ * 字幕设置 Activity
  *
- * 提供字幕相关的配置选项：
- * - API Key设置（语音识别 + 翻译服务）
- * - 语音识别引擎选择（Whisper / SenseVoice本地 / AnimeWhisper）
- * - 翻译服务提供商选择（Google / LibreTranslate / DeepSeek / Kimi）
- * - 显示模式选择
- * - 字体大小调整
- * - 背景不透明度调整
+ * 支持配置：
+ * - 语音识别引擎（AnimeWhisper / SenseVoice / 讯飞 / 百度）
+ * - 翻译服务（DeepSeek / Kimi / Google / LibreTranslate）
+ * - 显示模式、字体大小、背景透明度
  */
 class SubtitleSettingsActivity : AppCompatActivity() {
 
@@ -39,6 +36,7 @@ class SubtitleSettingsActivity : AppCompatActivity() {
     private lateinit var sliderFontSize: SeekBar
     private lateinit var sliderOpacity: SeekBar
     private lateinit var tvApiKeyHint: TextView
+    private lateinit var tvSpeechKeyHint: TextView
     private lateinit var btnSave: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,30 +59,24 @@ class SubtitleSettingsActivity : AppCompatActivity() {
     }
 
     private fun initViews() {
-        try {
-            toolbar = findViewById(R.id.toolbar)
-            etSpeechApiKey = findViewById(R.id.etSpeechApiKey)
-            etTranslationApiKey = findViewById(R.id.etTranslationApiKey)
-            rgSpeechProvider = findViewById(R.id.rgSpeechProvider)
-            rgTranslationProvider = findViewById(R.id.rgTranslationProvider)
-            rgDisplayMode = findViewById(R.id.rgDisplayMode)
-            sliderFontSize = findViewById(R.id.sliderFontSize)
-            sliderOpacity = findViewById(R.id.sliderOpacity)
-            tvApiKeyHint = findViewById(R.id.tvApiKeyHint)
-            btnSave = findViewById(R.id.btnSave)
+        toolbar = findViewById(R.id.toolbar)
+        etSpeechApiKey = findViewById(R.id.etSpeechApiKey)
+        etTranslationApiKey = findViewById(R.id.etTranslationApiKey)
+        rgSpeechProvider = findViewById(R.id.rgSpeechProvider)
+        rgTranslationProvider = findViewById(R.id.rgTranslationProvider)
+        rgDisplayMode = findViewById(R.id.rgDisplayMode)
+        sliderFontSize = findViewById(R.id.sliderFontSize)
+        sliderOpacity = findViewById(R.id.sliderOpacity)
+        tvApiKeyHint = findViewById(R.id.tvApiKeyHint)
+        btnSave = findViewById(R.id.btnSave)
 
-            toolbar.setNavigationOnClickListener {
-                finish()
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, "布局初始化失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-        }
+        toolbar.setNavigationOnClickListener { finish() }
     }
 
     private fun observeViewModel() {
         viewModel.speechApiKey.observe(this) { key ->
             etSpeechApiKey.setText(key)
+            updateSpeechKeyHint(viewModel.speechProvider.value ?: SpeechProvider.ANIME_WHISPER)
         }
 
         viewModel.translationApiKey.observe(this) { key ->
@@ -92,32 +84,35 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         }
 
         viewModel.speechProvider.observe(this) { provider ->
-            when (provider) {
-                SpeechProvider.WHISPER -> rgSpeechProvider.check(R.id.rbWhisper)
-                SpeechProvider.SENSEVOICE_LOCAL -> rgSpeechProvider.check(R.id.rbSenseVoice)
-                SpeechProvider.ANIME_WHISPER -> rgSpeechProvider.check(R.id.rbAnimeWhisper)
-                else -> rgSpeechProvider.check(R.id.rbSenseVoice)
+            val checkedId = when (provider) {
+                SpeechProvider.ANIME_WHISPER -> R.id.rbAnimeWhisper
+                SpeechProvider.SENSEVOICE_LOCAL -> R.id.rbSenseVoice
+                SpeechProvider.XUNFEI -> R.id.rbXunfei
+                SpeechProvider.BAIDU -> R.id.rbBaidu
+                SpeechProvider.WHISPER -> R.id.rbAnimeWhisper // fallback
             }
+            rgSpeechProvider.check(checkedId)
+            updateSpeechKeyHint(provider)
         }
 
         viewModel.translationProvider.observe(this) { provider ->
-            when (provider) {
-                TranslationProvider.LIBRE_TRANSLATE -> rgTranslationProvider.check(R.id.rbLibreTranslate)
-                TranslationProvider.GOOGLE_TRANSLATE -> rgTranslationProvider.check(R.id.rbGoogleTranslate)
-                TranslationProvider.DEEPSEEK -> rgTranslationProvider.check(R.id.rbDeepSeek)
-                TranslationProvider.KIMI -> rgTranslationProvider.check(R.id.rbKimi)
-                else -> rgTranslationProvider.check(R.id.rbDeepSeek)
+            val checkedId = when (provider) {
+                TranslationProvider.LIBRE_TRANSLATE -> R.id.rbLibreTranslate
+                TranslationProvider.GOOGLE_TRANSLATE -> R.id.rbGoogleTranslate
+                TranslationProvider.DEEPSEEK -> R.id.rbDeepSeek
+                TranslationProvider.KIMI -> R.id.rbKimi
             }
+            rgTranslationProvider.check(checkedId)
             updateApiKeyHint(provider)
         }
 
         viewModel.displayMode.observe(this) { mode ->
-            when (mode) {
-                DisplayMode.BILINGUAL -> rgDisplayMode.check(R.id.rbBilingual)
-                DisplayMode.CHINESE_ONLY -> rgDisplayMode.check(R.id.rbChineseOnly)
-                DisplayMode.JAPANESE_ONLY -> rgDisplayMode.check(R.id.rbJapaneseOnly)
-                else -> rgDisplayMode.check(R.id.rbBilingual)
+            val checkedId = when (mode) {
+                DisplayMode.BILINGUAL -> R.id.rbBilingual
+                DisplayMode.CHINESE_ONLY -> R.id.rbChineseOnly
+                DisplayMode.JAPANESE_ONLY -> R.id.rbJapaneseOnly
             }
+            rgDisplayMode.check(checkedId)
         }
 
         viewModel.fontSize.observe(this) { size ->
@@ -140,11 +135,14 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         // 语音识别引擎选择
         rgSpeechProvider.setOnCheckedChangeListener { _, checkedId ->
             val provider = when (checkedId) {
-                R.id.rbWhisper -> SpeechProvider.WHISPER
                 R.id.rbAnimeWhisper -> SpeechProvider.ANIME_WHISPER
-                else -> SpeechProvider.SENSEVOICE_LOCAL
+                R.id.rbSenseVoice -> SpeechProvider.SENSEVOICE_LOCAL
+                R.id.rbXunfei -> SpeechProvider.XUNFEI
+                R.id.rbBaidu -> SpeechProvider.BAIDU
+                else -> SpeechProvider.ANIME_WHISPER
             }
             viewModel.setSpeechProvider(provider)
+            updateSpeechKeyHint(provider)
         }
 
         // 翻译服务提供商选择
@@ -172,8 +170,7 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         // 字体大小滑块
         sliderFontSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val size = progress.coerceIn(12, 32)
-                viewModel.setFontSize(size)
+                viewModel.setFontSize(progress.coerceIn(12, 32))
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
@@ -182,8 +179,7 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         // 不透明度滑块
         sliderOpacity.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val opacity = progress.coerceIn(0, 100)
-                viewModel.setBgOpacity(opacity)
+                viewModel.setBgOpacity(progress.coerceIn(0, 100))
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
@@ -192,9 +188,11 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         // 保存按钮
         btnSave.setOnClickListener {
             val speechProvider = when (rgSpeechProvider.checkedRadioButtonId) {
-                R.id.rbWhisper -> SpeechProvider.WHISPER
                 R.id.rbAnimeWhisper -> SpeechProvider.ANIME_WHISPER
-                else -> SpeechProvider.SENSEVOICE_LOCAL
+                R.id.rbSenseVoice -> SpeechProvider.SENSEVOICE_LOCAL
+                R.id.rbXunfei -> SpeechProvider.XUNFEI
+                R.id.rbBaidu -> SpeechProvider.BAIDU
+                else -> SpeechProvider.ANIME_WHISPER
             }
 
             val mode = when (rgDisplayMode.checkedRadioButtonId) {
@@ -222,15 +220,30 @@ class SubtitleSettingsActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * 根据选择的翻译服务更新API Key提示文字
-     */
+    /** 根据语音识别引擎更新 API Key 提示 */
+    private fun updateSpeechKeyHint(provider: SpeechProvider) {
+        val hintText = when (provider) {
+            SpeechProvider.ANIME_WHISPER ->
+                "AnimeWhisper: 已内置 Token，如需自己的 Token 请填写 HF Token"
+            SpeechProvider.SENSEVOICE_LOCAL ->
+                "SenseVoice: 本地引擎无需 Key，需将 model_quant.onnx 放到 /Android/data/com.jsu.app/files/models/sensevoice/"
+            SpeechProvider.XUNFEI ->
+                "讯飞: 格式 appId|apiKey|apiSecret（竖线分隔），申请地址 xfyun.cn"
+            SpeechProvider.BAIDU ->
+                "百度: 格式 apiKey|secretKey（竖线分隔），申请地址 ai.baidu.com"
+            SpeechProvider.WHISPER ->
+                "Whisper 已弃用"
+        }
+        tvApiKeyHint.text = hintText
+    }
+
+    /** 根据翻译服务更新 API Key 提示 */
     private fun updateApiKeyHint(provider: TranslationProvider) {
         val hintText = when (provider) {
-            TranslationProvider.LIBRE_TRANSLATE -> "LibreTranslate是免费服务，无需填写API Key"
-            TranslationProvider.GOOGLE_TRANSLATE -> "请填写Google Cloud Translation API Key"
-            TranslationProvider.DEEPSEEK -> "请填写DeepSeek API Key（从 platform.deepseek.com 获取）"
-            TranslationProvider.KIMI -> "请填写Kimi API Key（从 platform.moonshot.cn 获取）"
+            TranslationProvider.LIBRE_TRANSLATE -> "LibreTranslate 是免费服务，无需填写 API Key"
+            TranslationProvider.GOOGLE_TRANSLATE -> "请填写 Google Cloud Translation API Key"
+            TranslationProvider.DEEPSEEK -> "DeepSeek: 已内置 Key，如需自己的请填写（platform.deepseek.com）"
+            TranslationProvider.KIMI -> "Kimi: 请填写 API Key（platform.moonshot.cn）"
         }
         tvApiKeyHint.text = hintText
     }

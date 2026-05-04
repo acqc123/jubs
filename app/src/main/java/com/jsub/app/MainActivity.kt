@@ -182,30 +182,53 @@ class MainActivity : AppCompatActivity() {
             SubtitleLine("", "[正在加载语音识别引擎...]", System.currentTimeMillis(), true)
         )
 
+        tvStatus.text = "加载引擎..."
+        val engineName = when (settings.speechProvider) {
+            com.jsub.app.model.SpeechProvider.ANIME_WHISPER -> "AnimeWhisper"
+            com.jsub.app.model.SpeechProvider.SENSEVOICE_LOCAL -> "SenseVoice"
+            com.jsub.app.model.SpeechProvider.XUNFEI -> "讯飞"
+            com.jsub.app.model.SpeechProvider.BAIDU -> "百度"
+            com.jsub.app.model.SpeechProvider.WHISPER -> "AnimeWhisper"
+        }
+        tvStatusDetail.text = "正在初始化 $engineName..."
+
         val engine = withContext(Dispatchers.IO) {
             try {
-                val apiKey = settings.speechApiKey.ifBlank { "hf_CdyvBJ" + "dcgkNVMjtYxmWqdcAWdwLkXvdkCh" }
-                val provider = if (settings.speechApiKey.isBlank() && settings.speechProvider == com.jsub.app.model.SpeechProvider.SENSEVOICE_LOCAL) com.jsub.app.model.SpeechProvider.ANIME_WHISPER else settings.speechProvider
                 val eng = EngineFactory.createEngine(
                     context = this@MainActivity,
-                    provider = provider,
-                    apiKey = apiKey
+                    provider = settings.speechProvider,
+                    apiKey = settings.speechApiKey
                 )
 
+                // 初始化引擎
                 if (eng is SenseVoiceEngine) {
-                    tvStatus.text = "加载模型..."
-                    tvStatusDetail.text = "首次使用需下载约200MB模型..."
+                    tvStatus.text = "检查本地模型..."
+                    tvStatusDetail.text = "检测 model_quant.onnx..."
                     val ok = eng.initialize()
                     if (!ok) {
-                        Log.w(TAG, "本地模型失败，尝试在线引擎")
+                        Log.w(TAG, "SenseVoice 模型不可用，尝试 fallback")
                         null
                     } else {
                         tvStatus.text = "模型就绪"
-                        tvStatusDetail.text = "本地模型已加载"
+                        tvStatusDetail.text = "SenseVoice 本地模型已加载"
                         eng
                     }
                 } else {
-                    eng
+                    // 在线引擎：AnimeWhisper / 讯飞 / 百度
+                    val initOk = try {
+                        eng.initialize()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "引擎初始化失败: ${e.message}")
+                        false
+                    }
+                    if (initOk) {
+                        tvStatusDetail.text = "$engineName 已就绪"
+                        eng
+                    } else {
+                        Log.w(TAG, "$engineName 初始化返回 false，但仍尝试使用")
+                        // 讯飞/百度可能 initialize 返回 false（未配置 key），但引擎对象仍可用
+                        eng
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "引擎创建失败", e)
@@ -213,18 +236,21 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Fallback到在线引擎
+        // Fallback: 如果首选引擎失败，尝试 AnimeWhisper
         val finalEngine = engine ?: withContext(Dispatchers.IO) {
             try {
-                tvStatus.text = "切换在线引擎..."
-                tvStatusDetail.text = "使用AnimeWhisper在线识别..."
-                EngineFactory.createEngine(
+                tvStatus.text = "切换备用引擎..."
+                tvStatusDetail.text = "使用 AnimeWhisper 在线识别..."
+                val fallback = EngineFactory.createEngine(
                     context = this@MainActivity,
                     provider = com.jsub.app.model.SpeechProvider.ANIME_WHISPER,
-                    apiKey = "hf_CdyvB" + "JdcgkNVMjtYxmWqdcAWdwLkXvdkCh"
+                    apiKey = ""
                 )
+                fallback.initialize()
+                tvStatusDetail.text = "AnimeWhisper 备用引擎已就绪"
+                fallback
             } catch (e: Exception) {
-                Log.e(TAG, "在线引擎也失败", e)
+                Log.e(TAG, "备用引擎也失败", e)
                 null
             }
         }

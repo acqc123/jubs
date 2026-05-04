@@ -44,18 +44,17 @@ class SenseVoiceEngine(private val context: Context) : SpeechRecognitionEngine {
      */
     override suspend fun initialize(): Boolean = withContext(Dispatchers.IO) {
         try {
-            // 1. 检查模型
+            // 1. 检查模型是否存在
             if (!modelManager.isModelDownloaded()) {
-                Log.i(TAG, "Model not found, downloading...")
-                val success = modelManager.downloadModel { downloaded, total ->
-                    val progress = if (total > 0) (downloaded * 100 / total).toInt() else 0
-                    Log.d(TAG, "Download progress: $progress%")
-                }
-                if (!success) {
-                    Log.e(TAG, "Model download failed")
-                    return@withContext false
-                }
+                val modelDir = modelManager.getModelDirPath()
+                val missing = modelManager.getMissingFiles()
+                Log.e(TAG, "SenseVoice 模型未找到！")
+                Log.e(TAG, "模型目录: $modelDir")
+                Log.e(TAG, "缺失文件: $missing")
+                Log.e(TAG, "请将 model_quant.onnx 及配套文件放到: $modelDir")
+                return@withContext false
             }
+            Log.i(TAG, "SenseVoice 模型已找到: ${modelManager.modelPath}")
 
             // 2. 加载ONNX Runtime
             ortEnvironment = OrtEnvironment.getEnvironment()

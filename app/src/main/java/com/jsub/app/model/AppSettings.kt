@@ -26,12 +26,16 @@ enum class AudioSource {
  * 语音识别服务提供商
  */
 enum class SpeechProvider {
-    /** OpenAI Whisper */
+    /** OpenAI Whisper（已弃用，自动fallback到AnimeWhisper） */
     WHISPER,
     /** SenseVoice 本地ONNX模型（离线） */
     SENSEVOICE_LOCAL,
     /** Anime-Whisper HuggingFace在线API（动漫优化） */
-    ANIME_WHISPER
+    ANIME_WHISPER,
+    /** 讯飞流式听写（WebSocket，日语需申请） */
+    XUNFEI,
+    /** 百度短语音识别（REST API） */
+    BAIDU
 }
 
 /**

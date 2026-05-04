@@ -13,95 +13,64 @@ import java.util.concurrent.TimeUnit
 /**
  * SenseVoice ONNX模型管理器
  *
- * 负责模型的下载、校验和路径管理。
+ * 负责模型的检测、路径管理。
+ * 支持用户手动下载的 model_quant.onnx 模型文件。
  */
 class ModelManager(private val context: Context) {
 
     companion object {
         private const val TAG = "ModelManager"
-        
-        /** 模型下载地址（ModelScope CDN） */
-        private const val MODEL_URL = "https://www.modelscope.cn/models/iic/sensevoice-small-onnx/resolve/master/model.onnx"
-        
-        /** 模型文件名 */
-        const val MODEL_FILENAME = "sensevoice_small.onnx"
-        
-        /** 模型期望大小（字节），用于校验 */
-        private const val MODEL_EXPECTED_SIZE = 200_000_000L // ~200MB
+
+        /** 模型子目录名 */
+        const val MODEL_SUBDIR = "sensevoice"
+
+        /** 用户通过 OpenClaw 下载的模型文件名 */
+        const val MODEL_FILENAME = "model_quant.onnx"
+
+        /** 配套文件 */
+        val REQUIRED_FILES = listOf(
+            "model_quant.onnx",
+            "tokens.json",
+            "config.yaml",
+            "am.mvn",
+            "configuration.json"
+        )
     }
 
-    /** 模型存储目录 */
+    /** 模型存储目录: /Android/data/com.jsu.app/files/models/sensevoice/ */
     private val modelDir: File by lazy {
-        File(context.getExternalFilesDir(null), "models").apply { mkdirs() }
+        File(context.getExternalFilesDir(null), "models/$MODEL_SUBDIR").apply { mkdirs() }
     }
 
-    /** 模型文件路径 */
+    /** 模型文件完整路径 */
     val modelPath: String by lazy {
         File(modelDir, MODEL_FILENAME).absolutePath
     }
 
-    /** 模型是否已下载 */
+    /**
+     * 检查模型是否已下载
+     * 检测 model_quant.onnx 是否存在且大小合理（>50MB）
+     */
     fun isModelDownloaded(): Boolean {
         val modelFile = File(modelDir, MODEL_FILENAME)
-        return modelFile.exists() && modelFile.length() > MODEL_EXPECTED_SIZE * 0.8
+        val exists = modelFile.exists()
+        val size = modelFile.length()
+        val valid = exists && size > 50_000_000L // 至少 50MB
+        Log.i(TAG, "Check model: exists=$exists, size=${size / 1024 / 1024}MB, valid=$valid, path=$modelPath")
+        return valid
     }
 
     /**
-     * 下载模型
-     * @param onProgress (downloadedBytes, totalBytes) -> Unit
-     * @return true if success
+     * 获取模型目录路径（供用户参考）
      */
-    suspend fun downloadModel(onProgress: ((Long, Long) -> Unit)? = null): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val client = OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(120, TimeUnit.SECONDS)
-                .build()
+    fun getModelDirPath(): String = modelDir.absolutePath
 
-            val request = Request.Builder().url(MODEL_URL).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.e(TAG, "Download failed: HTTP ${response.code}")
-                    return@withContext false
-                }
-
-                val body = response.body ?: return@withContext false
-                val totalBytes = body.contentLength()
-                val tempFile = File(modelDir, "${MODEL_FILENAME}.tmp")
-
-                FileOutputStream(tempFile).use { output ->
-                    val buffer = ByteArray(8192)
-                    var downloadedBytes = 0L
-                    val inputStream = body.byteStream()
-
-                    var read: Int
-                    while (inputStream.read(buffer).also { read = it } != -1) {
-                        output.write(buffer, 0, read)
-                        downloadedBytes += read
-                        onProgress?.invoke(downloadedBytes, totalBytes)
-                    }
-                }
-
-                // 重命名为最终文件
-                tempFile.renameTo(File(modelDir, MODEL_FILENAME))
-                Log.i(TAG, "Model downloaded: $modelPath (${File(modelDir, MODEL_FILENAME).length()} bytes)")
-                true
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Model download failed", e)
-            false
+    /**
+     * 获取缺失的文件列表
+     */
+    fun getMissingFiles(): List<String> {
+        return REQUIRED_FILES.filter { filename ->
+            !File(modelDir, filename).exists()
         }
-    }
-
-    /** 获取模型下载进度百分比 */
-    fun getDownloadProgress(): Int {
-        val modelFile = File(modelDir, MODEL_FILENAME)
-        if (!modelFile.exists()) return 0
-        return ((modelFile.length() * 100) / MODEL_EXPECTED_SIZE).toInt().coerceIn(0, 100)
-    }
-
-    /** 删除模型 */
-    fun deleteModel() {
-        File(modelDir, MODEL_FILENAME).delete()
     }
 }

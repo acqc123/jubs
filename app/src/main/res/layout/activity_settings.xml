@@ -65,23 +65,37 @@
                         android:orientation="vertical">
 
                         <RadioButton
+                            android:id="@+id/rbAnimeWhisper"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/speech_anime_whisper"
+                            android:checked="true" />
+
+                        <RadioButton
                             android:id="@+id/rbSenseVoice"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/speech_sensevoice"
-                            android:checked="true" />
+                            android:text="@string/speech_sensevoice" />
+
+                        <RadioButton
+                            android:id="@+id/rbXunfei"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/speech_xunfei" />
+
+                        <RadioButton
+                            android:id="@+id/rbBaidu"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/speech_baidu" />
 
                         <RadioButton
                             android:id="@+id/rbWhisper"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/speech_whisper" />
-
-                        <RadioButton
-                            android:id="@+id/rbAnimeWhisper"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/speech_anime_whisper" />
+                            android:text="@string/speech_whisper"
+                            android:enabled="false"
+                            android:alpha="0.5" />
                     </RadioGroup>
 
                     <!-- 语音识别 API Key -->
