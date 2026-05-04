@@ -29,6 +29,7 @@ import com.jsub.app.speech.SpeechProcessor
 import com.jsub.app.speech.StreamingSpeechProcessor
 import com.jsub.app.speech.engine.EngineFactory
 import com.jsub.app.speech.engine.SenseVoiceEngine
+import com.jsub.app.speech.engine.SpeechRecognitionEngine
 import com.jsub.app.ui.FloatingSubtitleView
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -53,6 +54,8 @@ class FloatingSubtitleService : Service() {
         const val STATUS_FLOATING_VIEW_FAIL = "floating_view_fail"
         const val STATUS_AUDIO_OK = "audio_ok"
         const val STATUS_AUDIO_FALLBACK = "audio_fallback"
+        const val STATUS_MODEL_DOWNLOADING = "model_downloading"
+        const val STATUS_MODEL_READY = "model_ready"
         const val STATUS_RUNNING = "running"
         const val STATUS_ERROR = "error"
         const val STATUS_STOPPED = "stopped"
@@ -60,11 +63,6 @@ class FloatingSubtitleService : Service() {
         @Volatile
         var isRunning = false
 
-        /**
-         * CRITICAL FIX: Use startService() not startForegroundService().
-         * Android 12+ blocks startForegroundService() when Activity is paused.
-         * startService() + immediate startForeground() in onStartCommand() works.
-         */
         fun start(context: Context, resultCode: Int, data: Intent, useMicrophone: Boolean = false) {
             val intent = Intent(context, FloatingSubtitleService::class.java).apply {
                 action = ACTION_START
@@ -106,7 +104,6 @@ class FloatingSubtitleService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(TAG, "onStartCommand action=${intent?.action}")
 
-        // CRITICAL: startForeground() IMMEDIATELY - must be within 5 seconds
         try {
             startForeground(JSubApplication.NOTIFICATION_ID, buildNotification())
             Log.i(TAG, "startForeground() succeeded")
@@ -152,28 +149,32 @@ class FloatingSubtitleService : Service() {
         settings = loadSettings()
         Log.i(TAG, "Settings loaded")
 
-        // === Step 1: Create floating view ===
+        // Step 1: Show floating window immediately
         try {
+            // Hide any existing floating view first (prevent duplicates)
+            try {
+                floatingView?.hide()
+            } catch (_: Exception) {}
+
             floatingView = FloatingSubtitleView(this@FloatingSubtitleService).apply {
                 setDisplayMode(settings.displayMode)
                 setFontSize(settings.fontSize)
                 setBgOpacity(settings.bgOpacity)
-                show()  // @Throws - let failure propagate
+                show()
             }
             sendStatusBroadcast(STATUS_FLOATING_VIEW_OK, "悬浮窗已显示")
             Log.i(TAG, "Floating view ADDED")
-
-            // Show initial placeholder
-            floatingView?.updateSubtitle(
-                SubtitleLine("", "[正在初始化...]", System.currentTimeMillis(), true)
-            )
         } catch (e: Exception) {
             Log.e(TAG, "Floating view FAILED", e)
             sendStatusBroadcast(STATUS_FLOATING_VIEW_FAIL, "悬浮窗显示失败: ${e.localizedMessage}")
-            // Continue anyway - notification at least shows
         }
 
-        // === Step 2: Start audio capture ===
+        // Show initial status
+        floatingView?.updateSubtitle(
+            SubtitleLine("", "[正在初始化音频...]", System.currentTimeMillis(), true)
+        )
+
+        // Step 2: Start audio capture
         val capturer: AudioCapturer = if (useMicrophone) {
             Log.i(TAG, "Using MicrophoneCapturer")
             MicrophoneCapturer()
@@ -203,7 +204,7 @@ class FloatingSubtitleService : Service() {
             Log.i(TAG, "Audio capture started")
         } catch (e: Exception) {
             Log.e(TAG, "Audio capture failed, fallback", e)
-            sendStatusBroadcast(STATUS_AUDIO_FALLBACK, "系统音频失败，尝试麦克风")
+            sendStatusBroadcast(STATUS_AUDIO_FALLBACK, "系统音频失败，尝试麦克风: ${e.localizedMessage}")
             try { audioCapturer?.stopCapture(); audioCapturer?.release() } catch (_: Exception) {}
             val mic = MicrophoneCapturer()
             audioCapturer = mic
@@ -211,47 +212,87 @@ class FloatingSubtitleService : Service() {
             sendStatusBroadcast(STATUS_AUDIO_OK, "已切换到麦克风")
         }
 
-        // === Step 3: Create speech processor ===
+        // Step 3: Create speech engine with model download progress
         floatingView?.updateSubtitle(
-            SubtitleLine("", "[正在加载语音识别...]", System.currentTimeMillis(), true)
+            SubtitleLine("", "[正在加载语音识别引擎...]", System.currentTimeMillis(), true)
         )
 
-        val processor = withContext(Dispatchers.IO) {
+        val engine = withContext(Dispatchers.IO) {
             try {
-                val engine = EngineFactory.createEngine(
+                val eng = EngineFactory.createEngine(
                     context = this@FloatingSubtitleService,
                     provider = settings.speechProvider,
                     apiKey = settings.speechApiKey
                 )
-                if (engine is SenseVoiceEngine) engine.initialize()
 
-                val translationApi: TranslationApi = when (settings.translationProvider) {
-                    TranslationProvider.GOOGLE_TRANSLATE -> GoogleTranslateApi(settings.translationApiKey)
-                    TranslationProvider.LIBRE_TRANSLATE -> LibreTranslateApi()
-                    TranslationProvider.DEEPSEEK -> DeepSeekTranslationApi(settings.translationApiKey)
-                    TranslationProvider.KIMI -> KimiTranslationApi(settings.translationApiKey)
+                // If using SenseVoice, initialize (may download 200MB model)
+                if (eng is SenseVoiceEngine) {
+                    sendStatusBroadcast(STATUS_MODEL_DOWNLOADING, "正在下载/加载SenseVoice模型 (~200MB)...")
+                    val initSuccess = eng.initialize()
+                    if (!initSuccess) {
+                        Log.w(TAG, "SenseVoice init failed, falling back")
+                        sendStatusBroadcast(STATUS_ERROR, "本地模型加载失败，尝试在线识别...")
+                        null
+                    } else {
+                        sendStatusBroadcast(STATUS_MODEL_READY, "本地模型已就绪")
+                        eng
+                    }
+                } else {
+                    eng
                 }
-                StreamingSpeechProcessor(engine, translationApi)
             } catch (e: Exception) {
                 Log.e(TAG, "Engine creation failed", e)
                 null
             }
         }
 
-        if (processor == null) {
-            sendStatusBroadcast(STATUS_ERROR, "语音识别引擎创建失败")
+        // Fallback to online engine if local failed
+        val finalEngine = engine ?: withContext(Dispatchers.IO) {
+            try {
+                sendStatusBroadcast(STATUS_MODEL_DOWNLOADING, "切换到在线识别引擎...")
+                // Try AnimeWhisper online
+                val fallback = EngineFactory.createEngine(
+                    context = this@FloatingSubtitleService,
+                    provider = com.jsub.app.model.SpeechProvider.ANIME_WHISPER,
+                    apiKey = settings.speechApiKey
+                )
+                fallback
+            } catch (e: Exception) {
+                Log.e(TAG, "Fallback engine also failed", e)
+                null
+            }
+        }
+
+        if (finalEngine == null) {
+            sendStatusBroadcast(STATUS_ERROR, "所有语音识别引擎均不可用")
+            floatingView?.updateSubtitle(
+                SubtitleLine("", "[引擎初始化失败]", System.currentTimeMillis(), true)
+            )
             return
         }
 
+        // Step 4: Create translation API and processor
+        val translationApi: TranslationApi = when (settings.translationProvider) {
+            TranslationProvider.GOOGLE_TRANSLATE -> GoogleTranslateApi(settings.translationApiKey)
+            TranslationProvider.LIBRE_TRANSLATE -> LibreTranslateApi()
+            TranslationProvider.DEEPSEEK -> DeepSeekTranslationApi(settings.translationApiKey)
+            TranslationProvider.KIMI -> KimiTranslationApi(settings.translationApiKey)
+        }
+
+        val processor = StreamingSpeechProcessor(finalEngine, translationApi)
         speechProcessor = processor
 
         try {
             val flow = audioCapturer?.audioBufferFlow
-            if (flow != null) processor.startProcessing(flow)
-            else throw IllegalStateException("Audio flow is null")
+            if (flow != null) {
+                processor.startProcessing(flow)
+                Log.i(TAG, "Speech processing started")
+            } else {
+                throw IllegalStateException("Audio flow is null")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Processing start failed", e)
-            sendStatusBroadcast(STATUS_ERROR, "语音识别启动失败")
+            sendStatusBroadcast(STATUS_ERROR, "语音识别启动失败: ${e.localizedMessage}")
             return
         }
 
@@ -300,9 +341,9 @@ class FloatingSubtitleService : Service() {
                 putExtra(EXTRA_STATUS, status)
                 putExtra(EXTRA_STATUS_MESSAGE, message)
             })
-            Log.d(TAG, "Broadcast sent: $status - $message")
+            Log.d(TAG, "Broadcast: $status - $message")
         } catch (e: Exception) {
-            Log.w(TAG, "Broadcast send failed", e)
+            Log.w(TAG, "Broadcast failed", e)
         }
     }
 
