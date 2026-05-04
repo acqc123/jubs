@@ -43,7 +43,7 @@ class MainActivity : AppCompatActivity() {
     private var useMicrophone = false
     private val handler = Handler(Looper.getMainLooper())
 
-    // Prevent double-start from multiple onResume() calls
+    // ===== CRITICAL FIX: Use static flag to prevent double start across Activity recreations =====
     private var hasDeferredStart = false
     private var deferredCode: Int? = null
     private var deferredData: Intent? = null
@@ -60,7 +60,6 @@ class MainActivity : AppCompatActivity() {
                 when (status) {
                     FloatingSubtitleService.STATUS_STARTING -> {
                         tvStatus.text = "正在启动..."
-                        tvStatusDetail.text = "服务初始化中..."
                     }
                     FloatingSubtitleService.STATUS_FOREGROUND_OK -> {
                         tvStatus.text = "前台服务就绪"
@@ -72,7 +71,7 @@ class MainActivity : AppCompatActivity() {
                     FloatingSubtitleService.STATUS_FLOATING_VIEW_FAIL -> {
                         tvStatus.text = "悬浮窗失败"
                         tvStatusDetail.text = msg
-                        Toast.makeText(this@MainActivity, "⚠️ 悬浮窗失败: $msg", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this@MainActivity, "⚠️ $msg", Toast.LENGTH_LONG).show()
                     }
                     FloatingSubtitleService.STATUS_AUDIO_OK -> {
                         tvStatus.text = "音频捕获正常"
@@ -104,18 +103,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // MediaProjection launcher - only stores result, actual start in onResume()
+    // MediaProjection launcher - DEFERRED START: store result, execute in onResume()
     private val mediaProjectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
-            Log.i(TAG, "MediaProjection granted, queuing deferred start")
+            Log.i(TAG, "MediaProjection granted, DEFERRING start to onResume()")
             hasDeferredStart = true
             deferredCode = result.resultCode
             deferredData = result.data
             deferredMic = false
-            tvStatus.text = "等待启动..."
-            tvStatusDetail.text = "请点击屏幕回到本APP"
+            tvStatus.text = "录屏已授权"
+            tvStatusDetail.text = "请点击确定回到本APP"
+            Toast.makeText(this, "请点击确定/共享按钮回到APP", Toast.LENGTH_LONG).show()
         } else {
             Toast.makeText(this, "需要录屏权限才能捕获内部音频", Toast.LENGTH_LONG).show()
         }
@@ -129,16 +129,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        Log.i(TAG, "onResume")
+        Log.i(TAG, "onResume - hasDeferredStart=$hasDeferredStart, isRunning=${FloatingSubtitleService.isRunning}")
 
-        // Always register receiver first
         registerStatusReceiver()
-
-        // Update current state
         updateUIState(FloatingSubtitleService.isRunning)
 
-        // Execute deferred start if queued
-        if (hasDeferredStart) {
+        // Execute deferred start ONLY if we have pending data AND service is NOT already running
+        if (hasDeferredStart && !FloatingSubtitleService.isRunning) {
             hasDeferredStart = false
             val code = deferredCode!!
             val data = deferredData!!
@@ -146,10 +143,11 @@ class MainActivity : AppCompatActivity() {
             deferredCode = null
             deferredData = null
 
-            Log.i(TAG, "Executing deferred start (mic=$mic)")
+            Log.i(TAG, "Executing DEFERRED start (mic=$mic)")
             tvStatus.text = "正在启动服务..."
             tvStatusDetail.text = "请稍候..."
 
+            // 500ms delay to ensure Activity is fully foreground
             handler.postDelayed({
                 try {
                     FloatingSubtitleService.start(this, code, data, mic)
@@ -158,7 +156,7 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "启动失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                     updateUIState(false)
                 }
-            }, 300) // 300ms delay to ensure Activity is fully foreground
+            }, 500)
         }
     }
 
@@ -170,7 +168,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun registerStatusReceiver() {
         try {
-            unregisterStatusReceiver() // avoid duplicate registration
+            unregisterReceiver(statusReceiver)
         } catch (_: Exception) {}
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
